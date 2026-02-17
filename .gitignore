@@ -9,3 +9,9 @@
 
 # OS
 .DS_Store
+
+# Rust / CKB contracts
+contracts/target/
+contracts/Cargo.lock
+contracts/deploy-info*.json
+contracts/migrations/
