@@ -211,9 +211,10 @@ async fn sync_from_chain_for_address(
 
 /// Sync badges from chain for a specific event.
 ///
-/// Searches the indexer for badge cells whose type script args start with
-/// SHA256(event_id), derives holder addresses from lock scripts, and stores
-/// any missing badges.
+/// Scans all badge cells with the given code_hash and filters to the target
+/// event inside process_badge_cell. A direct prefix search by event_id_hash
+/// is no longer possible because the type_id occupies bytes 0–31 of the args
+/// and the indexer only matches prefixes from byte 0.
 async fn sync_from_chain_for_event(
     cache: &Cache,
     rpc: &CkbRpcClient,
@@ -224,13 +225,13 @@ async fn sync_from_chain_for_event(
     let event_id_hash = hex::encode(sha2::Sha256::digest(event_id.as_bytes()));
 
     let mut event_hash_map = HashMap::new();
-    event_hash_map.insert(event_id_hash.clone(), event_id.to_string());
+    event_hash_map.insert(event_id_hash, event_id.to_string());
 
     let search_key = serde_json::json!({
         "script": {
             "code_hash": code_hash,
             "hash_type": "type",
-            "args": format!("0x{}", event_id_hash)
+            "args": "0x"
         },
         "script_type": "type",
         "script_search_mode": "prefix"
@@ -309,11 +310,12 @@ async fn process_badge_cell(
     };
 
     let args_hex = type_args.trim_start_matches("0x");
-    if args_hex.len() < 64 {
+    // Args are 96 bytes (192 hex chars): type_id (0–31) | event_id_hash (32–63) | recipient_hash (64–95)
+    if args_hex.len() < 192 {
         return false;
     }
 
-    let event_id = match event_hash_map.get(&args_hex[..64]) {
+    let event_id = match event_hash_map.get(&args_hex[64..128]) {
         Some(id) => id.clone(),
         None => return false,
     };

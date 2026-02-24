@@ -7,8 +7,8 @@ import { WalletService } from './wallet.service';
  * These MUST match the deployed contracts exactly.
  *
  * Args schema (defined by contracts, mirrored here):
- *   - DOB Badge:    SHA256(event_id) || SHA256(recipient_address) = 64 bytes
- *   - Event Anchor: SHA256(event_id) || SHA256(creator_address)   = 64 bytes
+ *   - DOB Badge:    type_id (32) || SHA256(event_id) (32) || SHA256(recipient_address) (32) = 96 bytes
+ *   - Event Anchor: SHA256(event_id) || SHA256(creator_address) = 64 bytes
  */
 export interface ContractConfig {
   codeHash: string;
@@ -89,8 +89,7 @@ export class ChainRejectionError extends Error {
       // Map known error codes
       let reason = 'Transaction rejected by type script';
       if (code === 1) reason = 'Invalid script args format';
-      if (code === 2) reason = 'Duplicate output detected';
-      if (code === 3) reason = 'Badge/Anchor already exists on-chain';
+      if (code === 2) reason = 'Type ID validation failed';
 
       return new ChainRejectionError(reason, code, message);
     }
@@ -116,8 +115,13 @@ export class ContractService {
     return new Uint8Array(hashBuffer);
   }
 
+  /** Convert a Uint8Array to a lowercase hex string (without 0x prefix). */
+  private bytesToHex(bytes: Uint8Array): string {
+    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
   /**
-   * Build type script args per contract spec:
+   * Build type script args for the event anchor contract:
    * SHA256(eventId) || SHA256(address) = 64 bytes
    */
   private async buildArgs(eventId: string, address: string): Promise<string> {
@@ -128,7 +132,7 @@ export class ContractService {
     args.set(eventIdHash, 0);
     args.set(addressHash, 32);
 
-    return '0x' + Array.from(args).map(b => b.toString(16).padStart(2, '0')).join('');
+    return '0x' + this.bytesToHex(args);
   }
 
   /**
@@ -144,7 +148,7 @@ export class ContractService {
     data[1] = FLAG_HAS_METADATA;
     data.set(contentHash, 2);
 
-    return '0x' + Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
+    return '0x' + this.bytesToHex(data);
   }
 
   private configToScript(config: ContractConfig, args: string): ccc.Script {
@@ -166,8 +170,14 @@ export class ContractService {
   }
 
   /**
-   * Build a DOB Badge minting transaction.
-   * Uniqueness is enforced by the TYPE SCRIPT, not this code.
+   * Build a DOB Badge minting transaction skeleton.
+   *
+   * The type_id field in args (bytes 0-31) is set to zeros as a placeholder.
+   * The caller MUST inject the real type_id after selecting inputs, because
+   * the type_id is derived from the first input's outpoint — which is only
+   * known after completeInputsByCapacity runs.
+   *
+   * The output is sized for 96-byte args so capacity calculation is correct.
    */
   async buildBadgeMintTx(
     eventId: string,
@@ -180,8 +190,15 @@ export class ContractService {
       throw new Error('Wallet not connected');
     }
 
-    const args = await this.buildArgs(eventId, recipientAddress);
-    const typeScript = this.configToScript(DOB_BADGE_CONFIG, args);
+    const eventIdHash = await this.sha256(eventId);
+    const addressHash = await this.sha256(recipientAddress);
+
+    // 96-byte args: zero type_id placeholder (0-31) + event_id_hash (32-63) + recipient_hash (64-95)
+    const args = new Uint8Array(96);
+    args.set(eventIdHash, 32);
+    args.set(addressHash, 64);
+
+    const typeScript = this.configToScript(DOB_BADGE_CONFIG, '0x' + this.bytesToHex(args));
     const recipientLock = (await ccc.Address.fromString(recipientAddress, this.walletService.ckbClient)).script;
 
     // Build cell data (hash-only, full metadata stored off-chain)
@@ -237,7 +254,9 @@ export class ContractService {
 
   /**
    * Mint a DOB badge on-chain.
-   * Chain will reject if badge already exists (error code 3).
+   *
+   * The type_id is computed after inputs are selected and injected into
+   * the badge output's type script args before the transaction is signed.
    */
   async mintBadge(
     eventId: string,
@@ -253,9 +272,29 @@ export class ContractService {
       ).join('');
     }
 
+    const signer = this.walletService.signer;
+    if (!signer) {
+      throw new Error('Wallet not connected');
+    }
+
     try {
+      // 1. Build the transaction skeleton with a zero type_id placeholder.
       const tx = await this.buildBadgeMintTx(eventId, eventIssuer, recipientAddress, proofHash);
-      return await this.walletService.sendTransaction(tx);
+
+      // 2. Select capacity inputs. The first input's outpoint determines the type_id.
+      await tx.completeInputsByCapacity(signer);
+
+      // 3. Compute the type_id: blake2b(first_input_packed || output_index_u64_le).
+      const typeIdHex = ccc.hashTypeId(tx.inputs[0], 0).slice(2);
+
+      // 4. Replace the placeholder in args with the real type_id.
+      const eventIdHex = this.bytesToHex(await this.sha256(eventId));
+      const recipientHex = this.bytesToHex(await this.sha256(recipientAddress));
+      tx.outputs[0].type!.args = `0x${typeIdHex}${eventIdHex}${recipientHex}`;
+
+      // 5. Complete fee and send.
+      await tx.completeFeeBy(signer);
+      return signer.sendTransaction(tx);
     } catch (err) {
       throw ChainRejectionError.fromCkbError(err);
     }
@@ -292,29 +331,13 @@ export class ContractService {
    * - Indexers lag behind chain tip
    * - Race conditions are possible
    * - The TYPE SCRIPT is the source of truth
+   *
+   * NOTE: With the Type ID args layout, the type_id occupies bytes 0-31 and
+   * is unique per badge instance. A prefix search by (event_id, recipient)
+   * is no longer possible via the indexer alone. This hint always returns
+   * false until an alternative lookup (e.g. backend query) is implemented.
    */
-  async badgeExistsHint(eventId: string, recipientAddress: string): Promise<boolean> {
-    if (!CONTRACTS_DEPLOYED) {
-      return false;
-    }
-
-    try {
-      const args = await this.buildArgs(eventId, recipientAddress);
-      const typeScript = this.configToScript(DOB_BADGE_CONFIG, args);
-
-      const client = this.walletService.ckbClient;
-      const cells = client.findCells({
-        script: typeScript,
-        scriptType: 'type',
-        scriptSearchMode: 'exact',
-      });
-
-      for await (const _ of cells) {
-        return true;
-      }
-    } catch {
-      // Indexer errors shouldn't block UX
-    }
+  async badgeExistsHint(_eventId: string, _recipientAddress: string): Promise<boolean> {
     return false;
   }
 
