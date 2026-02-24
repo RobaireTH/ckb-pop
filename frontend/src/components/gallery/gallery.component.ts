@@ -227,6 +227,34 @@ type RoleFilter = 'all' | 'Attendee' | 'Organizer' | 'Certificate';
                 }
               </div>
             }
+
+            <!-- Add a CLI-created event by pasting its event ID.
+                 Events created on the CLI may use a different wallet address
+                 than the one connected here.  Pasting the event ID links them
+                 and persists the link in localStorage across sessions. -->
+            <div class="mt-8 border border-white/[0.04] p-4">
+              <div class="font-mono text-[9px] text-zinc-500 uppercase tracking-wider mb-3">Add CLI Event by ID</div>
+              <div class="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Paste event ID printed by ckb-pop event create"
+                  [value]="watchInput()"
+                  (input)="watchInput.set($any($event.target).value)"
+                  (keydown.enter)="handleWatchEvent()"
+                  class="flex-1 bg-transparent border border-white/[0.06] px-3 py-2 font-mono text-xs text-zinc-400 placeholder-zinc-700 focus:outline-none focus:border-white/20"
+                />
+                <button
+                  (click)="handleWatchEvent()"
+                  [disabled]="watchLoading() || !watchInput().trim()"
+                  class="btn-action whitespace-nowrap disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {{ watchLoading() ? 'Adding...' : 'Add' }}
+                </button>
+              </div>
+              @if (watchError()) {
+                <div class="font-mono text-[9px] text-red-400 mt-2">{{ watchError() }}</div>
+              }
+            </div>
           }
         }
       </div>
@@ -444,6 +472,11 @@ export class GalleryComponent implements OnInit {
   attendees = signal<Attendee[]>([]);
   copied = signal(false);
 
+  // Watch-by-ID state for CLI-created events.
+  watchInput = signal('');
+  watchLoading = signal(false);
+  watchError = signal('');
+
   constructor() {
     effect(() => {
       if (this.walletService.isConnected()) {
@@ -493,6 +526,22 @@ export class GalleryComponent implements OnInit {
         this.copied.set(true);
         setTimeout(() => this.copied.set(false), 1500);
       });
+    }
+  }
+
+  /** Add a CLI-created event to My Events by pasting its event ID. */
+  async handleWatchEvent(): Promise<void> {
+    const id = this.watchInput().trim();
+    if (!id) return;
+    this.watchError.set('');
+    this.watchLoading.set(true);
+    try {
+      await this.poapService.watchEventById(id);
+      this.watchInput.set('');
+    } catch (err) {
+      this.watchError.set(err instanceof Error ? err.message : 'Could not add event.');
+    } finally {
+      this.watchLoading.set(false);
     }
   }
 

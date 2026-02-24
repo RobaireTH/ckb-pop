@@ -41,16 +41,27 @@ export class PoapService {
 
   private readonly badgesSignal = signal<Badge[]>([]);
 
-  // Store created events in memory
+  // Store created events in memory.
   private readonly eventsSignal = signal<PoPEvent[]>([]);
 
+  // localStorage key for event IDs watched via the CLI.
+  private static readonly WATCHED_EVENTS_KEY = 'ckb-pop-watched-events';
+
+  // Reactive set of watched event IDs (CLI-created events linked by ID).
+  private readonly watchedIdsSignal = signal<string[]>(this.loadWatchedIdsFromStorage());
+
   readonly myBadges = this.badgesSignal.asReadonly();
-  
-  // Computed signal to get events created by the current user
+
+  // Events created by the current wallet OR explicitly watched by event ID.
+  // Watched IDs let CLI-created events appear even when the creator address
+  // used on the CLI differs from the address connected in the browser.
   readonly myCreatedEvents = computed(() => {
     const address = this.walletService.address();
     if (!address) return [];
-    return this.eventsSignal().filter(e => e.issuer === address);
+    const watchedIds = new Set(this.watchedIdsSignal());
+    return this.eventsSignal().filter(
+      e => e.issuer === address || watchedIds.has(e.id)
+    );
   });
 
   async getEventByCode(code: string): Promise<PoPEvent> {
@@ -461,40 +472,102 @@ export class PoapService {
 
   /**
    * Load events created by the given address from the backend.
-   * Populates the eventsSignal so myCreatedEvents works across sessions.
+   * Also loads any events that were watched by event ID (e.g. CLI-created
+   * events whose creator address differs from the connected wallet).
+   * Populates eventsSignal so myCreatedEvents works across sessions.
    */
   async loadMyEventsFromBackend(address: string): Promise<void> {
     try {
       const res = await fetch(`${this.backendUrl}/events`);
       if (!res.ok) return;
       const data = await res.json();
-      const events: PoPEvent[] = (data.events || [])
-        .filter((e: { creator_address: string }) => e.creator_address === address)
-        .map((e: {
-          event_id: string;
-          metadata: { name: string; start_time?: string; description?: string; image_url?: string; location?: string };
-          activated_at: string;
-          creator_address: string;
-          payment_tx_hash?: string;
-        }) => ({
-          id: e.event_id,
-          name: e.metadata.name,
-          date: e.metadata.start_time || e.activated_at,
-          issuer: e.creator_address,
-          location: e.metadata.location || '',
-          description: e.metadata.description,
-          imageUrl: e.metadata.image_url,
-          anchorTxHash: e.payment_tx_hash,
-        }));
 
-      // Merge with locally-created events to avoid duplicates.
+      type RawEvent = {
+        event_id: string;
+        metadata: { name: string; start_time?: string; description?: string; image_url?: string; location?: string };
+        activated_at: string;
+        creator_address: string;
+        payment_tx_hash?: string;
+      };
+
+      const mapEvent = (e: RawEvent): PoPEvent => ({
+        id: e.event_id,
+        name: e.metadata.name,
+        date: e.metadata.start_time || e.activated_at,
+        issuer: e.creator_address,
+        location: e.metadata.location || '',
+        description: e.metadata.description,
+        imageUrl: e.metadata.image_url,
+        anchorTxHash: e.payment_tx_hash,
+      });
+
+      // Events owned by the connected wallet address.
+      const owned: PoPEvent[] = (data.events as RawEvent[] || [])
+        .filter(e => e.creator_address === address)
+        .map(mapEvent);
+
+      // Events watched by ID — CLI-created events linked by event ID so they
+      // appear in My Events even when the CLI wallet differs from the browser
+      // wallet.
+      const watchedIds = this.watchedIdsSignal();
+      const allEvents: Map<string, RawEvent> = new Map(
+        (data.events as RawEvent[] || []).map(e => [e.event_id, e])
+      );
+      const watched: PoPEvent[] = watchedIds
+        .filter(id => allEvents.has(id) && !owned.some(e => e.id === id))
+        .map(id => mapEvent(allEvents.get(id)!));
+
+      const toAdd = [...owned, ...watched];
+
+      // Merge, avoiding duplicates already in the signal.
       const existingIds = new Set(this.eventsSignal().map(e => e.id));
-      const newFromBackend = events.filter(e => !existingIds.has(e.id));
-      if (newFromBackend.length > 0) {
-        this.eventsSignal.update(existing => [...existing, ...newFromBackend]);
+      const newEvents = toAdd.filter(e => !existingIds.has(e.id));
+      if (newEvents.length > 0) {
+        this.eventsSignal.update(existing => [...existing, ...newEvents]);
       }
     } catch {
       // Backend unreachable — keep local events only.
+    }
+  }
+
+  /**
+   * Watch a CLI-created event by its event ID.
+   * Fetches the event from the backend, saves the ID to localStorage so it
+   * persists across sessions, and adds it to myCreatedEvents immediately.
+   */
+  async watchEventById(id: string): Promise<void> {
+    const trimmed = id.trim().toLowerCase();
+    if (!trimmed) throw new Error('Event ID is required.');
+
+    const event = await this.getEventById(trimmed);
+    if (!event) throw new Error(`No event found with ID: ${trimmed}`);
+
+    // Persist to localStorage and update reactive signal.
+    const current = this.watchedIdsSignal();
+    if (!current.includes(trimmed)) {
+      const updated = [...current, trimmed];
+      try {
+        localStorage.setItem(PoapService.WATCHED_EVENTS_KEY, JSON.stringify(updated));
+      } catch {
+        // localStorage unavailable — still work in-memory.
+      }
+      this.watchedIdsSignal.set(updated);
+    }
+
+    // Merge the event into the signal so myCreatedEvents picks it up.
+    const existingIds = new Set(this.eventsSignal().map(e => e.id));
+    if (!existingIds.has(trimmed)) {
+      this.eventsSignal.update(events => [event, ...events]);
+    }
+  }
+
+  /** Read watched event IDs from localStorage on service initialisation. */
+  private loadWatchedIdsFromStorage(): string[] {
+    try {
+      const raw = localStorage.getItem(PoapService.WATCHED_EVENTS_KEY);
+      return raw ? (JSON.parse(raw) as string[]) : [];
+    } catch {
+      return [];
     }
   }
 }
