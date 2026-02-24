@@ -7,8 +7,8 @@ pub const SCHEMA_VERSION: &str = "1";
 /// Length of hash fields (SHA256)
 pub const HASH_LEN: usize = 32;
 
-/// Length of badge type script args (event_id_hash + recipient_hash)
-pub const BADGE_ARGS_LEN: usize = 64;
+/// Length of badge type script args (type_id + event_id_hash + recipient_hash)
+pub const BADGE_ARGS_LEN: usize = 96;
 
 /// Length of event anchor type script args (event_id_hash + creator_hash)
 pub const ANCHOR_ARGS_LEN: usize = 64;
