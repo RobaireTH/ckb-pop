@@ -7,8 +7,8 @@ import { WalletService } from './wallet.service';
  * These MUST match the deployed contracts exactly.
  *
  * Args schema (defined by contracts, mirrored here):
- *   - DOB Badge:    type_id (32) || SHA256(event_id) (32) || SHA256(recipient_address) (32) = 96 bytes
- *   - Event Anchor: SHA256(event_id) || SHA256(creator_address) = 64 bytes
+ *   - DOB Badge:    type_id (20) || SHA256(event_id)[..20] (20) || SHA256(recipient_address)[..20] (20) = 60 bytes
+ *   - Event Anchor: SHA256(event_id)[..20] (20) || SHA256(creator_address)[..20] (20) = 40 bytes
  */
 export interface ContractConfig {
   codeHash: string;
@@ -115,6 +115,11 @@ export class ContractService {
     return new Uint8Array(hashBuffer);
   }
 
+  /** First 20 bytes of SHA256 — matches the 20-byte truncated hash used in contract args. */
+  private async sha256Truncated(data: string): Promise<Uint8Array> {
+    return (await this.sha256(data)).slice(0, 20);
+  }
+
   /** Convert a Uint8Array to a lowercase hex string (without 0x prefix). */
   private bytesToHex(bytes: Uint8Array): string {
     return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
@@ -122,15 +127,15 @@ export class ContractService {
 
   /**
    * Build type script args for the event anchor contract:
-   * SHA256(eventId) || SHA256(address) = 64 bytes
+   * SHA256(eventId)[..20] || SHA256(address)[..20] = 40 bytes
    */
   private async buildArgs(eventId: string, address: string): Promise<string> {
-    const eventIdHash = await this.sha256(eventId);
-    const addressHash = await this.sha256(address);
+    const eventIdHash = await this.sha256Truncated(eventId);
+    const addressHash = await this.sha256Truncated(address);
 
-    const args = new Uint8Array(64);
+    const args = new Uint8Array(40);
     args.set(eventIdHash, 0);
-    args.set(addressHash, 32);
+    args.set(addressHash, 20);
 
     return '0x' + this.bytesToHex(args);
   }
@@ -177,7 +182,7 @@ export class ContractService {
    * the type_id is derived from the first input's outpoint — which is only
    * known after completeInputsByCapacity runs.
    *
-   * The output is sized for 96-byte args so capacity calculation is correct.
+   * The output is sized for 60-byte args so capacity calculation is correct.
    */
   async buildBadgeMintTx(
     eventId: string,
@@ -190,13 +195,13 @@ export class ContractService {
       throw new Error('Wallet not connected');
     }
 
-    const eventIdHash = await this.sha256(eventId);
-    const addressHash = await this.sha256(recipientAddress);
+    const eventIdHash = await this.sha256Truncated(eventId);
+    const addressHash = await this.sha256Truncated(recipientAddress);
 
-    // 96-byte args: zero type_id placeholder (0-31) + event_id_hash (32-63) + recipient_hash (64-95)
-    const args = new Uint8Array(96);
-    args.set(eventIdHash, 32);
-    args.set(addressHash, 64);
+    // 60-byte args: zero type_id placeholder (0-19) + event_id_hash (20-39) + recipient_hash (40-59)
+    const args = new Uint8Array(60);
+    args.set(eventIdHash, 20);
+    args.set(addressHash, 40);
 
     const typeScript = this.configToScript(DOB_BADGE_CONFIG, '0x' + this.bytesToHex(args));
     const recipientLock = (await ccc.Address.fromString(recipientAddress, this.walletService.ckbClient)).script;
@@ -284,12 +289,12 @@ export class ContractService {
       // 2. Select capacity inputs. The first input's outpoint determines the type_id.
       await tx.completeInputsByCapacity(signer);
 
-      // 3. Compute the type_id: blake2b(first_input_packed || output_index_u64_le).
-      const typeIdHex = ccc.hashTypeId(tx.inputs[0], 0).slice(2);
+      // 3. Compute the type_id: blake2b(first_input_packed || output_index_u64_le), truncated to 20 bytes.
+      const typeIdHex = ccc.hashTypeId(tx.inputs[0], 0).slice(2, 42); // first 40 hex chars = 20 bytes
 
       // 4. Replace the placeholder in args with the real type_id.
-      const eventIdHex = this.bytesToHex(await this.sha256(eventId));
-      const recipientHex = this.bytesToHex(await this.sha256(recipientAddress));
+      const eventIdHex = this.bytesToHex(await this.sha256Truncated(eventId));
+      const recipientHex = this.bytesToHex(await this.sha256Truncated(recipientAddress));
       tx.outputs[0].type!.args = `0x${typeIdHex}${eventIdHex}${recipientHex}`;
 
       // 5. Complete fee and send.

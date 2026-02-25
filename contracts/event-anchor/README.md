@@ -40,10 +40,12 @@ A single on-chain cell created by the event creator. It represents:
 
 ```rust
 struct EventAnchorArgs {
-    event_id_hash: [u8; 32],     // hash(event_id)
-    creator_address_hash: [u8; 32],
+    event_id_hash: [u8; 20],        // sha256(event_id)[..20]
+    creator_address_hash: [u8; 20], // sha256(creator_address)[..20]
 }
 ```
+
+Total: 40 bytes. Fields are truncated to 20 bytes (160-bit, matching CKB's blake160 security level).
 
 ---
 

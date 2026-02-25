@@ -4,14 +4,15 @@ pub const PROTOCOL_ID: &str = "ckb-pop";
 /// Current schema version
 pub const SCHEMA_VERSION: &str = "1";
 
-/// Length of hash fields (SHA256)
-pub const HASH_LEN: usize = 32;
+/// Length of truncated hash fields (first 20 bytes of SHA256 or blake2b).
+/// 20 bytes matches CKB's blake160 security level used for lock script args.
+pub const HASH_LEN: usize = 20;
 
-/// Length of badge type script args (type_id + event_id_hash + recipient_hash)
-pub const BADGE_ARGS_LEN: usize = 96;
+/// Length of badge type script args (type_id + event_id_hash + recipient_hash), each 20 bytes.
+pub const BADGE_ARGS_LEN: usize = 60;
 
-/// Length of event anchor type script args (event_id_hash + creator_hash)
-pub const ANCHOR_ARGS_LEN: usize = 64;
+/// Length of event anchor type script args (event_id_hash + creator_hash), each 20 bytes.
+pub const ANCHOR_ARGS_LEN: usize = 40;
 
 /// Error codes
 pub mod error {

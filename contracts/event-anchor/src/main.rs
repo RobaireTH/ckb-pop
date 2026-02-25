@@ -11,9 +11,9 @@
 //! Cell data should contain JSON metadata:
 //!   { event_id, creator_address, metadata_hash, created_at_block }
 //!
-//! Args format (64 bytes):
-//!   - bytes 0-31:  SHA256(event_id)
-//!   - bytes 32-63: SHA256(creator_address)
+//! Args format (40 bytes):
+//!   - bytes 0-19:  SHA256(event_id)[..20]
+//!   - bytes 20-39: SHA256(creator_address)[..20]
 
 #![no_std]
 #![no_main]
@@ -27,12 +27,12 @@ use ckb_std::{
     high_level::{load_script, load_cell_type},
 };
 
-/// Args length: event_id_hash (32) + creator_address_hash (32)
-const ARGS_LEN: usize = 64;
+/// Args length: event_id_hash (20) + creator_address_hash (20)
+const ARGS_LEN: usize = 40;
 
 /// Error codes
 mod error {
-    /// Script args length != 64 bytes
+    /// Script args length != 40 bytes
     pub const INVALID_ARGS: i8 = 1;
     /// Multiple outputs with same type script args
     pub const DUPLICATE_OUTPUT: i8 = 2;

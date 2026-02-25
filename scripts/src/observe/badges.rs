@@ -222,7 +222,7 @@ async fn sync_from_chain_for_event(
     code_hash: &str,
     address_hrp: &str,
 ) -> Result<(), BadgeObserveError> {
-    let event_id_hash = hex::encode(sha2::Sha256::digest(event_id.as_bytes()));
+    let event_id_hash = hex::encode(&sha2::Sha256::digest(event_id.as_bytes())[..20]);
 
     let mut event_hash_map = HashMap::new();
     event_hash_map.insert(event_id_hash, event_id.to_string());
@@ -310,12 +310,12 @@ async fn process_badge_cell(
     };
 
     let args_hex = type_args.trim_start_matches("0x");
-    // Args are 96 bytes (192 hex chars): type_id (0–31) | event_id_hash (32–63) | recipient_hash (64–95)
-    if args_hex.len() < 192 {
+    // Args are 60 bytes (120 hex chars): type_id (0–19) | event_id_hash (20–39) | recipient_hash (40–59)
+    if args_hex.len() < 120 {
         return false;
     }
 
-    let event_id = match event_hash_map.get(&args_hex[64..128]) {
+    let event_id = match event_hash_map.get(&args_hex[40..80]) {
         Some(id) => id.clone(),
         None => return false,
     };
@@ -369,7 +369,7 @@ async fn build_event_hash_map(cache: &Cache) -> Result<HashMap<String, String>, 
 
     for event_id in event_ids {
         let hash = sha2::Sha256::digest(event_id.as_bytes());
-        let hash_hex = hex::encode(hash);
+        let hash_hex = hex::encode(&hash[..20]);
         map.insert(hash_hex, event_id);
     }
 

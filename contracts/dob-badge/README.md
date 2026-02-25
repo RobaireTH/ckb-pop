@@ -39,10 +39,13 @@ Represent a cryptographically unique proof-of-presence badge owned by a CKB addr
 
 ```rust
 struct BadgeArgs {
-    event_id_hash: [u8; 32],              // hash(event_id)
-    recipient_address_hash: [u8; 32],     // hash(recipient_address)
+    type_id: [u8; 20],                    // blake2b(first_input_outpoint || output_index)[..20]
+    event_id_hash: [u8; 20],              // sha256(event_id)[..20]
+    recipient_address_hash: [u8; 20],     // sha256(recipient_address)[..20]
 }
 ```
+
+Total: 60 bytes. All fields are truncated to 20 bytes (160-bit, matching CKB's blake160 security level).
 
 The type script uses args to enforce uniqueness.
 
