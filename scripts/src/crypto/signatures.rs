@@ -6,9 +6,8 @@ const NERVOS_MESSAGE_PREFIX: &str = "Nervos Message:";
 
 // secp256k1-blake160-sighash-all code_hash (mainnet & testnet, hash_type: type)
 const SECP256K1_BLAKE160_CODE_HASH: [u8; 32] = [
-    0x9b, 0xd7, 0xe0, 0x6f, 0x3e, 0xcf, 0x4b, 0xe0, 0xf2, 0xfc, 0xd2, 0x18, 0x8b, 0x23, 0xf1,
-    0xb9, 0xfc, 0xc8, 0x8e, 0x5d, 0x4b, 0x65, 0xa8, 0x63, 0x7b, 0x17, 0x72, 0x3b, 0xbd, 0xa3,
-    0xcc, 0xe8,
+    0x9b, 0xd7, 0xe0, 0x6f, 0x3e, 0xcf, 0x4b, 0xe0, 0xf2, 0xfc, 0xd2, 0x18, 0x8b, 0x23, 0xf1, 0xb9,
+    0xfc, 0xc8, 0x8e, 0x5d, 0x4b, 0x65, 0xa8, 0x63, 0x7b, 0x17, 0x72, 0x3b, 0xbd, 0xa3, 0xcc, 0xe8,
 ];
 
 // --- Hash functions ---
@@ -94,8 +93,7 @@ pub fn parse_ckb_address(address: &str) -> Result<([u8; 32], u8, Vec<u8>), Signa
         return Err(SignatureError::InvalidAddress);
     }
 
-    let payload =
-        Vec::<u8>::from_base32(&data).map_err(|_| SignatureError::InvalidAddress)?;
+    let payload = Vec::<u8>::from_base32(&data).map_err(|_| SignatureError::InvalidAddress)?;
 
     if payload.is_empty() {
         return Err(SignatureError::InvalidAddress);
@@ -175,7 +173,10 @@ mod tests {
         assert_eq!(code_hash, SECP256K1_BLAKE160_CODE_HASH);
         assert_eq!(hash_type, 0x01);
         assert_eq!(args.len(), 20);
-        assert_eq!(hex::encode(&args), "b39bbc0b3673c7d36450bc14cfcdad2d559c6c64");
+        assert_eq!(
+            hex::encode(&args),
+            "b39bbc0b3673c7d36450bc14cfcdad2d559c6c64"
+        );
     }
 
     #[test]

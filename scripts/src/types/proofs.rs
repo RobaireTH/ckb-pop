@@ -42,7 +42,11 @@ impl AttendanceProof {
     }
 
     pub fn signed_message(&self) -> String {
-        Self::message_to_sign(&self.event_id, self.qr_payload.timestamp, &self.attendee_address)
+        Self::message_to_sign(
+            &self.event_id,
+            self.qr_payload.timestamp,
+            &self.attendee_address,
+        )
     }
 }
 
@@ -229,7 +233,10 @@ mod tests {
             attendee_signature: "sig".to_string(),
             created_at: 1700000005,
         };
-        assert_eq!(proof.signed_message(), "CKB-PoP|EVT001|1700000000|ckt1qaddr");
+        assert_eq!(
+            proof.signed_message(),
+            "CKB-PoP|EVT001|1700000000|ckt1qaddr"
+        );
     }
 
     // --- WindowProof ---

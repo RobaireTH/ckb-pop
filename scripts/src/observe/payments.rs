@@ -99,7 +99,9 @@ mod tests {
     #[tokio::test]
     async fn test_record_payment_observation() {
         let cache = test_cache().await;
-        record_payment_observation(&cache, "evt1", "0xtx1", 500).await.unwrap();
+        record_payment_observation(&cache, "evt1", "0xtx1", 500)
+            .await
+            .unwrap();
 
         let obs = cache.get_payment_observation("evt1").await.unwrap();
         assert!(obs.is_some());

@@ -46,7 +46,8 @@ impl CkbRpcClient {
             "params": params
         });
 
-        let response = self.client
+        let response = self
+            .client
             .post(&self.endpoint)
             .json(&body)
             .send()
@@ -63,7 +64,9 @@ impl CkbRpcClient {
 
     pub async fn get_tip_block_number(&self) -> Result<u64, RpcError> {
         let result = self.call("get_tip_block_number", json!([])).await?;
-        let hex_str = result.as_str().ok_or_else(|| RpcError::Parse("expected string".into()))?;
+        let hex_str = result
+            .as_str()
+            .ok_or_else(|| RpcError::Parse("expected string".into()))?;
         let num = u64::from_str_radix(hex_str.trim_start_matches("0x"), 16)
             .map_err(|e| RpcError::Parse(e.to_string()))?;
 
@@ -71,7 +74,10 @@ impl CkbRpcClient {
         Ok(num)
     }
 
-    pub async fn get_transaction(&self, tx_hash: &str) -> Result<Option<TransactionInfo>, RpcError> {
+    pub async fn get_transaction(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<TransactionInfo>, RpcError> {
         let result = self.call("get_transaction", json!([tx_hash])).await?;
 
         if result.is_null() {
@@ -143,11 +149,8 @@ impl CkbRpcClient {
         let cursor = after_cursor
             .map(|s| Value::String(s.to_string()))
             .unwrap_or(Value::Null);
-        self.call(
-            "get_cells",
-            json!([search_key, order, limit_hex, cursor]),
-        )
-        .await
+        self.call("get_cells", json!([search_key, order, limit_hex, cursor]))
+            .await
     }
 
     pub async fn last_observed_block(&self) -> Option<u64> {

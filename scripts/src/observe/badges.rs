@@ -25,7 +25,9 @@ pub async fn observe_badges_by_address(
 ) -> Result<BadgeListResponse, BadgeObserveError> {
     // Sync from chain before returning cached results.
     if let Some((code_hash, address_hrp)) = chain_config {
-        if let Err(e) = sync_from_chain_for_address(cache, rpc, address, code_hash, address_hrp).await {
+        if let Err(e) =
+            sync_from_chain_for_address(cache, rpc, address, code_hash, address_hrp).await
+        {
             tracing::warn!("Chain sync for address {address} failed: {e}");
         }
     }
@@ -57,7 +59,9 @@ pub async fn observe_badges_by_event(
 ) -> Result<BadgeListResponse, BadgeObserveError> {
     // Sync from chain before returning cached results.
     if let Some((code_hash, address_hrp)) = chain_config {
-        if let Err(e) = sync_from_chain_for_event(cache, rpc, event_id, code_hash, address_hrp).await {
+        if let Err(e) =
+            sync_from_chain_for_event(cache, rpc, event_id, code_hash, address_hrp).await
+        {
             tracing::warn!("Chain sync for event {event_id} failed: {e}");
         }
     }
@@ -112,10 +116,19 @@ pub async fn confirm_pending_badges(cache: &Cache, rpc: &CkbRpcClient) {
         match rpc.get_transaction(&badge.mint_tx_hash).await {
             Ok(Some(info)) if info.confirmed => {
                 if let Some(block_number) = info.block_number {
-                    if let Err(e) = cache.update_badge_block_number(&badge.mint_tx_hash, block_number).await {
-                        tracing::warn!("Failed to update badge block number for {}: {e}", badge.mint_tx_hash);
+                    if let Err(e) = cache
+                        .update_badge_block_number(&badge.mint_tx_hash, block_number)
+                        .await
+                    {
+                        tracing::warn!(
+                            "Failed to update badge block number for {}: {e}",
+                            badge.mint_tx_hash
+                        );
                     } else {
-                        tracing::info!("Confirmed badge {} at block {block_number}", badge.mint_tx_hash);
+                        tracing::info!(
+                            "Confirmed badge {} at block {block_number}",
+                            badge.mint_tx_hash
+                        );
                     }
                 }
             }
@@ -138,7 +151,12 @@ pub async fn confirm_pending_badges(cache: &Cache, rpc: &CkbRpcClient) {
 ///
 /// This ensures badge data survives partial database loss (badges wiped but
 /// events intact) since the chain is the source of truth.
-pub async fn rehydrate_from_chain(cache: &Cache, rpc: &CkbRpcClient, code_hash: &str, address_hrp: &str) {
+pub async fn rehydrate_from_chain(
+    cache: &Cache,
+    rpc: &CkbRpcClient,
+    code_hash: &str,
+    address_hrp: &str,
+) {
     tracing::info!("Starting chain rehydration with code_hash={code_hash}");
 
     let event_hash_map = match build_event_hash_map(cache).await {
@@ -254,7 +272,10 @@ async fn sync_cells_from_search(
     let mut total: u64 = 0;
 
     loop {
-        let cells = match rpc.search_cells(search_key, after_cursor.as_deref(), 100).await {
+        let cells = match rpc
+            .search_cells(search_key, after_cursor.as_deref(), 100)
+            .await
+        {
             Ok(result) => result,
             Err(e) => {
                 tracing::debug!("Indexer query failed during sync: {e}");
@@ -434,7 +455,9 @@ mod tests {
     async fn test_observe_badges_by_address_empty() {
         let cache = test_cache().await;
         let rpc = test_rpc();
-        let result = observe_badges_by_address(&cache, &rpc, "addr1", false, None).await.unwrap();
+        let result = observe_badges_by_address(&cache, &rpc, "addr1", false, None)
+            .await
+            .unwrap();
         assert!(result.badges.is_empty());
         assert!(result.cached);
     }
@@ -454,7 +477,9 @@ mod tests {
         };
         store_badge_observation(&cache, badge).await.unwrap();
 
-        let result = observe_badges_by_event(&cache, &rpc, "evt1", false, None).await.unwrap();
+        let result = observe_badges_by_event(&cache, &rpc, "evt1", false, None)
+            .await
+            .unwrap();
         assert_eq!(result.badges.len(), 1);
         assert_eq!(result.badges[0].holder_address, "addr1");
     }
@@ -474,7 +499,9 @@ mod tests {
         };
         store_badge_observation(&cache, badge).await.unwrap();
 
-        let result = observe_badges_by_address(&cache, &rpc, "myaddr", false, None).await.unwrap();
+        let result = observe_badges_by_address(&cache, &rpc, "myaddr", false, None)
+            .await
+            .unwrap();
         assert_eq!(result.badges.len(), 1);
     }
 }

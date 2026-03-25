@@ -51,7 +51,11 @@ pub async fn verify_attendance_proof(
         &window.creator_signature,
     );
 
-    if !qr::verify_qr_hmac(&window_secret, proof.qr_payload.timestamp, &proof.qr_payload.hmac) {
+    if !qr::verify_qr_hmac(
+        &window_secret,
+        proof.qr_payload.timestamp,
+        &proof.qr_payload.hmac,
+    ) {
         return Err(RelayError::InvalidQrHmac);
     }
 
@@ -199,7 +203,11 @@ mod tests {
         let proof = AttendanceProof {
             event_id: "nonexistent".to_string(),
             attendee_address: "addr".to_string(),
-            qr_payload: QrPayload { event_id: "nonexistent".to_string(), timestamp: 0, hmac: "".to_string() },
+            qr_payload: QrPayload {
+                event_id: "nonexistent".to_string(),
+                timestamp: 0,
+                hmac: "".to_string(),
+            },
             attendee_signature: "sig".to_string(),
             created_at: 0,
         };
@@ -213,8 +221,12 @@ mod tests {
         let event = ActiveEvent {
             event_id: "evt1".to_string(),
             metadata: EventMetadata {
-                name: "T".to_string(), description: "D".to_string(),
-                image_url: None, location: None, start_time: None, end_time: None,
+                name: "T".to_string(),
+                description: "D".to_string(),
+                image_url: None,
+                location: None,
+                start_time: None,
+                end_time: None,
             },
             creator_address: "ckt1q".to_string(),
             payment_tx_hash: "0xtx".to_string(),
@@ -227,7 +239,11 @@ mod tests {
         let proof = AttendanceProof {
             event_id: "evt1".to_string(),
             attendee_address: "addr".to_string(),
-            qr_payload: QrPayload { event_id: "evt1".to_string(), timestamp: 0, hmac: "".to_string() },
+            qr_payload: QrPayload {
+                event_id: "evt1".to_string(),
+                timestamp: 0,
+                hmac: "".to_string(),
+            },
             attendee_signature: "sig".to_string(),
             created_at: 0,
         };
@@ -260,7 +276,8 @@ mod tests {
         let cache = test_cache().await;
         let (_, window) = setup_event_with_window(&cache).await;
 
-        let window_secret = qr::derive_window_secret("evt1", window.window_start, &window.creator_signature);
+        let window_secret =
+            qr::derive_window_secret("evt1", window.window_start, &window.creator_signature);
         let old_ts = Utc::now().timestamp() - 120; // 2 min ago, beyond TTL
         let hmac = qr::generate_qr_hmac(&window_secret, old_ts);
 
@@ -282,9 +299,14 @@ mod tests {
     #[tokio::test]
     async fn test_broadcast_tx_returns_hash() {
         let rpc = test_rpc();
-        let result = broadcast_tx(&rpc, BroadcastRequest {
-            signed_tx: "some_signed_tx_data".to_string(),
-        }).await.unwrap();
+        let result = broadcast_tx(
+            &rpc,
+            BroadcastRequest {
+                signed_tx: "some_signed_tx_data".to_string(),
+            },
+        )
+        .await
+        .unwrap();
         assert!(result.tx_hash.starts_with("0x"));
         assert_eq!(result.status, "submitted");
     }
@@ -292,8 +314,22 @@ mod tests {
     #[tokio::test]
     async fn test_broadcast_tx_deterministic() {
         let rpc = test_rpc();
-        let r1 = broadcast_tx(&rpc, BroadcastRequest { signed_tx: "tx_data".to_string() }).await.unwrap();
-        let r2 = broadcast_tx(&rpc, BroadcastRequest { signed_tx: "tx_data".to_string() }).await.unwrap();
+        let r1 = broadcast_tx(
+            &rpc,
+            BroadcastRequest {
+                signed_tx: "tx_data".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        let r2 = broadcast_tx(
+            &rpc,
+            BroadcastRequest {
+                signed_tx: "tx_data".to_string(),
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(r1.tx_hash, r2.tx_hash);
     }
 }
