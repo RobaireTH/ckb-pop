@@ -1,5 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { ccc } from '@ckb-ccc/ccc';
+import {
+  buildHashedCellData,
+  buildIssuerAnchorArgs,
+  buildUniqueArtifactArgs,
+} from '../lib/ckb-presence';
 import { WalletService } from './wallet.service';
 
 /**
@@ -56,16 +61,6 @@ const EVENT_ANCHOR_CONFIG: ContractConfig = {
 const CONTRACTS_DEPLOYED = !DOB_BADGE_CONFIG.codeHash.endsWith('0001');
 
 /**
- * Cell data format (binary, versioned):
- * [ version: u8 | flags: u8 | content_hash: 32 bytes ]
- *
- * Version 1 flags:
- *   0x01 = has off-chain metadata
- */
-const DATA_VERSION = 1;
-const FLAG_HAS_METADATA = 0x01;
-
-/**
  * Transaction rejection error with chain details
  */
 export class ChainRejectionError extends Error {
@@ -89,7 +84,8 @@ export class ChainRejectionError extends Error {
       // Map known error codes
       let reason = 'Transaction rejected by type script';
       if (code === 1) reason = 'Invalid script args format';
-      if (code === 2) reason = 'Type ID validation failed';
+      if (code === 2) reason = 'Duplicate output detected';
+      if (code === 3) reason = 'Badge/Anchor already exists on-chain';
 
       return new ChainRejectionError(reason, code, message);
     }
@@ -103,58 +99,6 @@ export class ChainRejectionError extends Error {
 })
 export class ContractService {
   private walletService = inject(WalletService);
-
-  /**
-   * SHA256 hash helper using Web Crypto API.
-   * Mirrors the hashing used in contracts.
-   */
-  private async sha256(data: string): Promise<Uint8Array> {
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-    return new Uint8Array(hashBuffer);
-  }
-
-  /** First 20 bytes of SHA256 — matches the 20-byte truncated hash used in contract args. */
-  private async sha256Truncated(data: string): Promise<Uint8Array> {
-    return (await this.sha256(data)).slice(0, 20);
-  }
-
-  /** Convert a Uint8Array to a lowercase hex string (without 0x prefix). */
-  private bytesToHex(bytes: Uint8Array): string {
-    return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  /**
-   * Build type script args for the event anchor contract:
-   * SHA256(eventId)[..20] || SHA256(address)[..20] = 40 bytes
-   */
-  private async buildArgs(eventId: string, address: string): Promise<string> {
-    const eventIdHash = await this.sha256Truncated(eventId);
-    const addressHash = await this.sha256Truncated(address);
-
-    const args = new Uint8Array(40);
-    args.set(eventIdHash, 0);
-    args.set(addressHash, 20);
-
-    return '0x' + this.bytesToHex(args);
-  }
-
-  /**
-   * Build versioned binary cell data.
-   * Format: [ version | flags | content_hash ]
-   */
-  private async buildCellData(contentJson: object): Promise<string> {
-    const contentStr = JSON.stringify(contentJson);
-    const contentHash = await this.sha256(contentStr);
-
-    const data = new Uint8Array(34); // 1 + 1 + 32
-    data[0] = DATA_VERSION;
-    data[1] = FLAG_HAS_METADATA;
-    data.set(contentHash, 2);
-
-    return '0x' + this.bytesToHex(data);
-  }
 
   private configToScript(config: ContractConfig, args: string): ccc.Script {
     return ccc.Script.from({
@@ -195,19 +139,14 @@ export class ContractService {
       throw new Error('Wallet not connected');
     }
 
-    const eventIdHash = await this.sha256Truncated(eventId);
-    const addressHash = await this.sha256Truncated(recipientAddress);
-
-    // 60-byte args: zero type_id placeholder (0-19) + event_id_hash (20-39) + recipient_hash (40-59)
-    const args = new Uint8Array(60);
-    args.set(eventIdHash, 20);
-    args.set(addressHash, 40);
-
-    const typeScript = this.configToScript(DOB_BADGE_CONFIG, '0x' + this.bytesToHex(args));
+    const typeScript = this.configToScript(
+      DOB_BADGE_CONFIG,
+      await buildUniqueArtifactArgs(eventId, recipientAddress)
+    );
     const recipientLock = (await ccc.Address.fromString(recipientAddress, this.walletService.ckbClient)).script;
 
     // Build cell data (hash-only, full metadata stored off-chain)
-    const cellData = await this.buildCellData({
+    const cellData = await buildHashedCellData({
       protocol: 'ckb-pop',
       version: 1,
       event_id: eventId,
@@ -238,11 +177,11 @@ export class ContractService {
       throw new Error('Wallet not connected');
     }
 
-    const args = await this.buildArgs(eventId, creatorAddress);
+    const args = await buildIssuerAnchorArgs(eventId, creatorAddress);
     const typeScript = this.configToScript(EVENT_ANCHOR_CONFIG, args);
     const creatorLock = (await ccc.Address.fromString(creatorAddress, this.walletService.ckbClient)).script;
 
-    const cellData = await this.buildCellData({
+    const cellData = await buildHashedCellData({
       event_id: eventId,
       creator: creatorAddress,
       metadata_hash: metadataHash,
@@ -293,9 +232,7 @@ export class ContractService {
       const typeIdHex = ccc.hashTypeId(tx.inputs[0], 0).slice(2, 42); // first 40 hex chars = 20 bytes
 
       // 4. Replace the placeholder in args with the real type_id.
-      const eventIdHex = this.bytesToHex(await this.sha256Truncated(eventId));
-      const recipientHex = this.bytesToHex(await this.sha256Truncated(recipientAddress));
-      tx.outputs[0].type!.args = `0x${typeIdHex}${eventIdHex}${recipientHex}`;
+      tx.outputs[0].type!.args = await buildUniqueArtifactArgs(eventId, recipientAddress, typeIdHex);
 
       // 5. Complete fee and send.
       await tx.completeFeeBy(signer);
@@ -355,7 +292,7 @@ export class ContractService {
     }
 
     try {
-      const args = await this.buildArgs(eventId, creatorAddress);
+      const args = await buildIssuerAnchorArgs(eventId, creatorAddress);
       const typeScript = this.configToScript(EVENT_ANCHOR_CONFIG, args);
 
       const client = this.walletService.ckbClient;
