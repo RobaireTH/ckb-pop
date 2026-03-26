@@ -5,6 +5,7 @@ import { MintingComponent } from './components/minting/minting.component';
 import { GalleryComponent } from './components/gallery/gallery.component';
 import { CreateEventComponent } from './components/create-event/create-event.component';
 import { LiveQrComponent } from './components/live-qr/live-qr.component';
+import { IntegrateComponent } from './components/integrate/integrate.component';
 
 export const routes: Routes = [
   { path: '', component: LandingComponent },
@@ -12,6 +13,7 @@ export const routes: Routes = [
   { path: 'minting', component: MintingComponent }, 
   { path: 'gallery', component: GalleryComponent },
   { path: 'create', component: CreateEventComponent },
+  { path: 'integrate', component: IntegrateComponent },
   { path: 'event/:id/live', component: LiveQrComponent },
   { path: '**', redirectTo: '' }
 ];

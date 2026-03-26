@@ -58,6 +58,12 @@ import { WalletService } from '../../services/wallet.service';
                 </svg>
                 <span>Create Event</span>
               </a>
+              <a routerLink="/integrate" class="cta-secondary">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/>
+                </svg>
+                <span>Integrate Module</span>
+              </a>
             </div>
           </div>
 

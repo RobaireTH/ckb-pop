@@ -155,6 +155,7 @@ export class HeaderComponent {
   navItems = [
     { path: '/check-in', label: 'Verify' },
     { path: '/create', label: 'Create' },
-    { path: '/gallery', label: 'Badges' }
+    { path: '/gallery', label: 'Badges' },
+    { path: '/integrate', label: 'Integrate' }
   ];
 }

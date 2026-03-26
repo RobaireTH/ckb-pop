@@ -50,6 +50,29 @@ export interface PresenceModuleManifest {
   policyExtensions: PresenceExtensionSummary[];
 }
 
+export interface PresenceApiRoute {
+  method: string;
+  path: string;
+  purpose: string;
+}
+
+export interface PresenceApiSurface {
+  basePath: string;
+  routes: PresenceApiRoute[];
+}
+
+export interface PresenceModuleRuntime {
+  addressHrp: string;
+  badgeSyncEnabled: boolean;
+  backendAuthority: string;
+}
+
+export interface PresenceBackendManifest extends PresenceModuleManifest {
+  api: PresenceApiSurface;
+  runtime: PresenceModuleRuntime;
+  notes: string[];
+}
+
 export interface PresenceEventMetadata {
   name: string;
   description?: string;
