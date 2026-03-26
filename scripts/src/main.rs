@@ -1,5 +1,6 @@
 mod cache;
 mod crypto;
+mod http;
 mod module;
 mod observe;
 mod relay;
@@ -10,9 +11,8 @@ mod types;
 
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{middleware, Router};
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::state::AppState;
@@ -78,15 +78,11 @@ async fn main() {
         });
     }
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     let app = Router::new()
         .nest("/api", routes::router())
         .with_state(state)
-        .layer(cors);
+        .layer(http::build_cors_layer())
+        .layer(middleware::map_response(http::set_security_headers));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
     tracing::info!("Backend listening on {}", addr);
