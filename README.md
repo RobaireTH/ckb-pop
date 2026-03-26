@@ -48,9 +48,7 @@ That endpoint describes:
 
 ### Reference App
 
-The Angular app remains useful, but it is no longer the boundary of the system. `poap.service.ts` and `contract.service.ts` now consume the shared kernel rather than owning the protocol logic themselves.
-
-More detail: see `MODULE.md`.
+The Angular app remains useful, but it is no longer the boundary of the system. `poap.service.ts`, `contract.service.ts`, and `/integrate` now consume the shared kernel rather than owning the protocol logic themselves.
 
 ## Architecture
 
@@ -106,6 +104,7 @@ Configure via `.env`:
 CKB_NETWORK=testnet
 CKB_RPC_URL=https://testnet.ckb.dev/rpc
 DATABASE_URL=sqlite:./ckb_pop.db?mode=rwc
+ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend.example
 ```
 
 ### Contracts
@@ -120,6 +119,8 @@ capsule build --release
 **Why keep verification mostly off-chain?** It keeps contracts minimal and lets different apps plug in new proof drivers and policy layers without redeploying the chain layer.
 
 **Why keep the backend non-authoritative?** The backend is an adapter, not the protocol. It can cache state, observe confirmations, and issue convenience APIs, but it does not get to override CKB invariants.
+
+**Why add an integrator route?** A reusable module is not real if outside builders need to read source files just to discover its boundaries. `/integrate` and `/api/module/manifest` make the module legible.
 
 **Why keep the PoP app at all?** A reusable module without a working reference consumer tends to rot. The PoP app proves the kernel, backend adapter, and contracts still compose into a real product.
 
