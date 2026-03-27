@@ -1,11 +1,11 @@
-# ckb-pop-presence
+# ckb-pop-kit
 
 Reusable presence primitives for applications building on Nervos CKB.
 
 ## Install
 
 ```bash
-npm install ckb-pop-presence
+npm install ckb-pop-kit
 ```
 
 ## What It Provides
@@ -24,7 +24,7 @@ import {
   createPresenceModule,
   createDynamicQrProofDriver,
   buildUniqueArtifactArgs,
-} from 'ckb-pop-presence';
+} from 'ckb-pop-kit';
 
 const presence = createPresenceModule({
   namespace: 'my-app',

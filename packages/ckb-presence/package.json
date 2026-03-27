@@ -1,5 +1,5 @@
 {
-  "name": "ckb-pop-presence",
+  "name": "ckb-pop-kit",
   "version": "0.1.0",
   "description": "Reusable presence primitives for applications building on Nervos CKB.",
   "type": "module",

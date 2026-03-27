@@ -126,7 +126,7 @@ capsule build --release
 
 ## Publishing
 
-The reusable package lives in `packages/ckb-presence/` and is set up to publish as `ckb-pop-presence`.
+The reusable package lives in `packages/ckb-presence/` and is set up to publish as `ckb-pop-kit`.
 
 - Local package build: `npx --prefix frontend tsc -p packages/ckb-presence/tsconfig.build.json`
 - CI validates the package with `.github/workflows/ci.yml`
