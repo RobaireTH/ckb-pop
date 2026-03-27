@@ -2,6 +2,9 @@
 .env
 .env.local
 *.db
+frontend/dist/
+packages/ckb-presence/dist/
+*.tgz
 
 # IDE
 .idea/

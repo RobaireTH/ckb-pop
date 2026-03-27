@@ -4,7 +4,7 @@ Reusable presence primitives for applications building on Nervos CKB.
 
 This repository still contains the PoP Network reference app, but the important boundary is now:
 
-- `frontend/src/lib/ckb-presence/` is the reusable TypeScript kernel
+- `packages/ckb-presence/` is the reusable TypeScript package
 - `scripts/` is the reference backend adapter
 - `contracts/` are the CKB-enforced reference artifacts
 - `frontend/src/components/` is a reference product that consumes the module
@@ -25,7 +25,7 @@ The reference artifact is still a soulbound badge, but the module now exposes ex
 
 ### TypeScript Kernel
 
-`frontend/src/lib/ckb-presence/` includes:
+`packages/ckb-presence/` includes:
 
 - extension registries for proof drivers, artifact drivers, and policy modules
 - event locator parsing and validation
@@ -48,12 +48,12 @@ That endpoint describes:
 
 ### Reference App
 
-The Angular app remains useful, but it is no longer the boundary of the system. `poap.service.ts`, `contract.service.ts`, and `/integrate` now consume the shared kernel rather than owning the protocol logic themselves.
+The Angular app remains useful, but it is no longer the boundary of the system. `poap.service.ts`, `contract.service.ts`, and `/integrate` now consume the shared package rather than owning the protocol logic themselves.
 
 ## Architecture
 
 ```text
-frontend/src/lib/ckb-presence/  reusable kernel
+packages/ckb-presence/         publishable TypeScript package
 frontend/                       Angular 21 reference app
 scripts/                        Rust reference backend (Axum, SQLite, CKB RPC)
 contracts/                      RISC-V type scripts deployed on CKB
@@ -123,6 +123,14 @@ capsule build --release
 **Why add an integrator route?** A reusable module is not real if outside builders need to read source files just to discover its boundaries. `/integrate` and `/api/module/manifest` make the module legible.
 
 **Why keep the PoP app at all?** A reusable module without a working reference consumer tends to rot. The PoP app proves the kernel, backend adapter, and contracts still compose into a real product.
+
+## Publishing
+
+The reusable package lives in `packages/ckb-presence/` and is set up to publish as `ckb-pop-presence`.
+
+- Local package build: `npx --prefix frontend tsc -p packages/ckb-presence/tsconfig.build.json`
+- CI validates the package with `.github/workflows/ci.yml`
+- npm publishing is wired through `.github/workflows/publish-presence.yml` and expects `NPM_TOKEN`
 
 ## License
 
