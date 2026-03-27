@@ -1,3 +1,1 @@
-export * from './ckb';
-export * from './module';
-export * from './types';
+export * from '../../../../packages/ckb-presence/src/index';

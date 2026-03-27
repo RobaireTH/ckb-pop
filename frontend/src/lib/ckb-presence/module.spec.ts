@@ -3,12 +3,12 @@ import {
   buildHashedCellData,
   buildIssuerAnchorArgs,
   buildUniqueArtifactArgs,
-} from './ckb';
+} from './index';
 import {
   createDynamicQrProofDriver,
   createPresenceModule,
   createReferenceCkbPresenceModule,
-} from './module';
+} from './index';
 
 describe('ckb-presence module', () => {
   it('resolves dynamic QR payloads with second-based timestamps', () => {

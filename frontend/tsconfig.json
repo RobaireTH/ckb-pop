@@ -25,7 +25,8 @@
   },
   "include": [
     "index.tsx",
-    "src/**/*.ts"
+    "src/**/*.ts",
+    "../packages/ckb-presence/src/**/*.ts"
   ],
   "angularCompilerOptions": {
     "disableTypeScriptVersionCheck": true
