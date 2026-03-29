@@ -1,6 +1,6 @@
 # ckb-pop-kit
 
-Reusable presence primitives for applications building on Nervos CKB.
+Reusable presence and participation primitives for applications building on Nervos CKB.
 
 ## Install
 
@@ -13,9 +13,11 @@ npm install ckb-pop-kit
 - proof driver registration
 - artifact driver registration
 - policy extension registration
-- event locator parsing and validation
+- scope locator parsing and validation
 - reference manifest generation
 - CKB helper functions for anchor args, artifact args, and hashed cell data
+
+It supports issuance scopes beyond physical events, including online hackathons, async programs, courses, campaigns, and other participation-based flows.
 
 ## Example
 

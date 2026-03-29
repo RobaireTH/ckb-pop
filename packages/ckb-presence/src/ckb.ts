@@ -40,6 +40,10 @@ export async function buildIssuerAnchorArgs(recordId: string, issuerAddress: str
   return `0x${recordHash}${issuerHash}`;
 }
 
+export async function buildScopeAnchorArgs(scopeId: string, issuerAddress: string): Promise<`0x${string}`> {
+  return buildIssuerAnchorArgs(scopeId, issuerAddress);
+}
+
 export async function buildUniqueArtifactArgs(
   recordId: string,
   ownerAddress: string,
@@ -49,6 +53,14 @@ export async function buildUniqueArtifactArgs(
   const recordHash = await sha256TruncatedHex(recordId);
   const ownerHash = await sha256TruncatedHex(ownerAddress);
   return `0x${normalizedTypeId}${recordHash}${ownerHash}`;
+}
+
+export async function buildScopedArtifactArgs(
+  scopeId: string,
+  ownerAddress: string,
+  typeIdHex = '0'.repeat(40)
+): Promise<`0x${string}`> {
+  return buildUniqueArtifactArgs(scopeId, ownerAddress, typeIdHex);
 }
 
 export async function buildHashedCellData(

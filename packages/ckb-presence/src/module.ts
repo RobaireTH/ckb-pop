@@ -1,10 +1,14 @@
 import type {
   CreatePresenceEventInput,
+  CreatePresenceScopeInput,
   CreatePresenceIntentPayload,
   PresenceArtifactDriver,
   PresenceArtifactRecord,
   PresenceCodePolicy,
   PresenceEventRecord,
+  PresenceScopeKind,
+  PresenceSignedClaim,
+  ParticipationMode,
   PresenceExtensionKind,
   PresenceExtensionStatus,
   PresenceModuleConfig,
@@ -40,6 +44,75 @@ function normalizeDate(value?: string): string | null {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed.toISOString();
+}
+
+function encodeBase64Url(data: string): string {
+  if (typeof globalThis.btoa === 'function') {
+    return globalThis
+      .btoa(data)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  }
+
+  const bufferCtor = (globalThis as { Buffer?: { from(data: string, encoding: string): { toString(encoding: string): string } } }).Buffer;
+  if (!bufferCtor) {
+    throw new Error('No base64 encoder available in this runtime.');
+  }
+  return bufferCtor.from(data, 'utf8').toString('base64url');
+}
+
+function decodeBase64Url(data: string): string {
+  if (typeof globalThis.atob === 'function') {
+    const normalized = data.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized + '='.repeat((4 - (normalized.length % 4 || 4)) % 4);
+    return globalThis.atob(padded);
+  }
+
+  const bufferCtor = (globalThis as { Buffer?: { from(data: string, encoding: string): { toString(encoding: string): string } } }).Buffer;
+  if (!bufferCtor) {
+    throw new Error('No base64 decoder available in this runtime.');
+  }
+  return bufferCtor.from(data, 'base64url').toString('utf8');
+}
+
+export function buildSignedClaimMessage(claim: Omit<PresenceSignedClaim, 'issuerSignature'>): string {
+  const expiresAt = claim.expiresAt == null ? 'open' : claim.expiresAt.toString();
+  return `CKB-PoP-Claim|${claim.scopeId}|${claim.recipientAddress}|${claim.claimId}|${claim.proofDriver}|${claim.proofRef}|${claim.issuedAt}|${expiresAt}`;
+}
+
+export function encodeSignedClaimToken(claim: PresenceSignedClaim): string {
+  return encodeBase64Url(JSON.stringify({
+    event_id: claim.scopeId,
+    recipient_address: claim.recipientAddress,
+    claim_id: claim.claimId,
+    proof_driver: claim.proofDriver,
+    proof_ref: claim.proofRef,
+    issuer_address: claim.issuerAddress,
+    issued_at: claim.issuedAt,
+    expires_at: claim.expiresAt ?? null,
+    issuer_signature: claim.issuerSignature,
+  }));
+}
+
+export function parseSignedClaimToken(token: string): PresenceSignedClaim | null {
+  try {
+    const raw = JSON.parse(decodeBase64Url(token)) as Record<string, unknown>;
+    const expiresAtRaw = raw.expiresAt ?? raw.expires_at;
+    return {
+      scopeId: String(raw.scopeId ?? raw.scope_id ?? raw.event_id ?? ''),
+      recipientAddress: String(raw.recipientAddress ?? raw.recipient_address ?? ''),
+      claimId: String(raw.claimId ?? raw.claim_id ?? ''),
+      proofDriver: String(raw.proofDriver ?? raw.proof_driver ?? ''),
+      proofRef: String(raw.proofRef ?? raw.proof_ref ?? ''),
+      issuerAddress: String(raw.issuerAddress ?? raw.issuer_address ?? ''),
+      issuedAt: Number(raw.issuedAt ?? raw.issued_at ?? 0),
+      expiresAt: expiresAtRaw == null ? null : Number(expiresAtRaw),
+      issuerSignature: String(raw.issuerSignature ?? raw.issuer_signature ?? ''),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function createPlainEventIdProofDriver(): PresenceProofDriver {
@@ -114,22 +187,80 @@ export function createDynamicQrProofDriver(
   };
 }
 
-export function createCkbBadgeArtifactDriver(): PresenceArtifactDriver {
+export function createSignedClaimProofDriver(): PresenceProofDriver {
+  return {
+    id: 'signed-claim',
+    label: 'Signed Claim Proof',
+    summary: 'Parses organizer-issued claim tokens for online or asynchronous participation flows.',
+    status: 'reference',
+    parse(raw) {
+      const trimmed = raw.trim();
+      if (!trimmed.startsWith('claim:')) {
+        return null;
+      }
+      const [, scopeId, claimRef] = trimmed.split(':');
+      if (!scopeId || !claimRef) {
+        return null;
+      }
+      return {
+        extensionId: 'signed-claim',
+        eventId: scopeId,
+        raw: trimmed,
+        metadata: { claimRef },
+      };
+    },
+  };
+}
+
+export function createSubmissionProofDriver(): PresenceProofDriver {
+  return {
+    id: 'submission-proof',
+    label: 'Submission Proof',
+    summary: 'Parses submission or deliverable references for hackathons, bounties, and online programs.',
+    status: 'reference',
+    parse(raw) {
+      const trimmed = raw.trim();
+      if (!trimmed.startsWith('submission:')) {
+        return null;
+      }
+      const [, scopeId, submissionRef] = trimmed.split(':');
+      if (!scopeId || !submissionRef) {
+        return null;
+      }
+      return {
+        extensionId: 'submission-proof',
+        eventId: scopeId,
+        raw: trimmed,
+        metadata: { submissionRef },
+      };
+    },
+  };
+}
+
+export function createCkbParticipationBadgeArtifactDriver(): PresenceArtifactDriver {
   return {
     id: 'ckb-dob-badge',
-    label: 'CKB Presence Badge',
-    summary: 'Mints a non-transferable CKB cell that represents a unique presence artifact.',
+    label: 'CKB Participation Badge',
+    summary: 'Mints a non-transferable CKB cell that represents a unique participation artifact.',
+    status: 'reference',
+  };
+}
+
+export function createCkbBadgeArtifactDriver(): PresenceArtifactDriver {
+  return createCkbParticipationBadgeArtifactDriver();
+}
+
+export function createCkbScopeAnchorArtifactDriver(): PresenceArtifactDriver {
+  return {
+    id: 'ckb-event-anchor',
+    label: 'CKB Scope Anchor',
+    summary: 'Anchors an issuance scope on-chain so off-chain proof systems have a stable CKB root.',
     status: 'reference',
   };
 }
 
 export function createEventAnchorArtifactDriver(): PresenceArtifactDriver {
-  return {
-    id: 'ckb-event-anchor',
-    label: 'CKB Event Anchor',
-    summary: 'Anchors event identity on-chain so off-chain proof systems have a stable CKB root.',
-    status: 'reference',
-  };
+  return createCkbScopeAnchorArtifactDriver();
 }
 
 export function createTimedWindowPolicyExtension(): PresencePolicyExtension {
@@ -148,6 +279,32 @@ export function createBackendObservationPolicyExtension(): PresencePolicyExtensi
     summary: 'Allows reference backends to cache state and observe chain confirmations without gaining authority.',
     status: 'reference',
   };
+}
+
+export function createOrganizerAttestationPolicyExtension(): PresencePolicyExtension {
+  return {
+    id: 'organizer-attestation',
+    label: 'Organizer Attestation Policy',
+    summary: 'Allows an organizer or program operator to attest that a participant completed an online or hybrid requirement.',
+    status: 'reference',
+  };
+}
+
+export function createSubmissionReviewPolicyExtension(): PresencePolicyExtension {
+  return {
+    id: 'submission-review',
+    label: 'Submission Review Policy',
+    summary: 'Supports issuing badges after a submission, contribution, or deliverable has been reviewed.',
+    status: 'reference',
+  };
+}
+
+function normalizeScopeKind(kind?: PresenceScopeKind): PresenceScopeKind | null {
+  return kind ?? null;
+}
+
+function normalizeParticipationMode(mode?: ParticipationMode): ParticipationMode | null {
+  return mode ?? null;
 }
 
 function registerUnique<T extends { id: string }>(registry: Map<string, T>, value: T, label: string) {
@@ -194,7 +351,7 @@ export function createPresenceModule(config: PresenceModuleConfig) {
         policyExtensions: extensions.policyExtensions,
       };
     },
-    resolveEventLocator(raw: string, now = Date.now()): PresenceProofResolution {
+    resolveScopeLocator(raw: string, now = Date.now()): PresenceProofResolution {
       const trimmed = raw.trim();
       if (!trimmed) {
         throw new Error('Presence locator cannot be empty.');
@@ -211,7 +368,10 @@ export function createPresenceModule(config: PresenceModuleConfig) {
 
       throw new Error('Unsupported presence locator format.');
     },
-    mapReferenceEvent(event: ReferenceActiveEvent): PresenceEventRecord {
+    resolveEventLocator(raw: string, now = Date.now()): PresenceProofResolution {
+      return api.resolveScopeLocator(raw, now);
+    },
+    mapReferenceScope(event: ReferenceActiveEvent): PresenceEventRecord {
       return {
         id: event.event_id,
         namespace: config.namespace,
@@ -225,6 +385,34 @@ export function createPresenceModule(config: PresenceModuleConfig) {
           location: event.metadata.location || undefined,
           startTime: event.metadata.start_time ?? null,
           endTime: event.metadata.end_time ?? null,
+          scopeKind: event.metadata.scope_kind ?? 'event',
+          participationMode: event.metadata.participation_mode ?? (event.metadata.location ? 'in-person' : undefined),
+        },
+      };
+    },
+    mapReferenceEvent(event: ReferenceActiveEvent): PresenceEventRecord {
+      return api.mapReferenceScope(event);
+    },
+    mapReferenceArtifact(
+      badge: ReferenceBadgeObservation,
+      event?: PresenceEventRecord
+    ): PresenceArtifactRecord {
+      return {
+        id: `${badge.event_id}-${badge.holder_address}`,
+        kind: 'badge',
+        scopeId: badge.event_id,
+        eventId: badge.event_id,
+        ownerAddress: badge.holder_address,
+        mintedAt: badge.observed_at,
+        txHash: badge.mint_tx_hash,
+        blockNumber: badge.mint_block_number > 0 ? badge.mint_block_number : undefined,
+        metadata: {
+          scopeName: event?.metadata.name || badge.event_id,
+          eventName: event?.metadata.name || badge.event_id,
+          imageUrl: event?.metadata.imageUrl,
+          scopeKind: event?.metadata.scopeKind || 'event',
+          participationMode: event?.metadata.participationMode,
+          verifiedAtBlock: badge.verified_at_block,
         },
       };
     },
@@ -232,18 +420,27 @@ export function createPresenceModule(config: PresenceModuleConfig) {
       badge: ReferenceBadgeObservation,
       event?: PresenceEventRecord
     ): PresenceArtifactRecord {
+      return api.mapReferenceArtifact(badge, event);
+    },
+    buildCreateScopeIntent(input: {
+      creatorAddress: string;
+      creatorSignature: string;
+      nonce: string;
+      scope: CreatePresenceScopeInput;
+    }): CreatePresenceIntentPayload {
       return {
-        id: `${badge.event_id}-${badge.holder_address}`,
-        kind: 'badge',
-        eventId: badge.event_id,
-        ownerAddress: badge.holder_address,
-        mintedAt: badge.observed_at,
-        txHash: badge.mint_tx_hash,
-        blockNumber: badge.mint_block_number > 0 ? badge.mint_block_number : undefined,
+        creator_address: input.creatorAddress,
+        creator_signature: input.creatorSignature,
+        nonce: input.nonce,
         metadata: {
-          eventName: event?.metadata.name || badge.event_id,
-          imageUrl: event?.metadata.imageUrl,
-          verifiedAtBlock: badge.verified_at_block,
+          name: input.scope.name,
+          description: input.scope.description || '',
+          image_url: input.scope.imageUrl || null,
+          location: input.scope.location || null,
+          start_time: normalizeDate(input.scope.date),
+          end_time: null,
+          scope_kind: normalizeScopeKind(input.scope.scopeKind),
+          participation_mode: normalizeParticipationMode(input.scope.participationMode),
         },
       };
     },
@@ -253,19 +450,12 @@ export function createPresenceModule(config: PresenceModuleConfig) {
       nonce: string;
       event: CreatePresenceEventInput;
     }): CreatePresenceIntentPayload {
-      return {
-        creator_address: input.creatorAddress,
-        creator_signature: input.creatorSignature,
+      return api.buildCreateScopeIntent({
+        creatorAddress: input.creatorAddress,
+        creatorSignature: input.creatorSignature,
         nonce: input.nonce,
-        metadata: {
-          name: input.event.name,
-          description: input.event.description || '',
-          image_url: input.event.imageUrl || null,
-          location: input.event.location || null,
-          start_time: normalizeDate(input.event.date),
-          end_time: null,
-        },
-      };
+        scope: input.event,
+      });
     },
   };
 
@@ -286,19 +476,23 @@ export function createReferenceCkbPresenceModule() {
   return createPresenceModule({
     namespace: 'ckb-pop',
     name: 'CKB Presence Module',
-    version: '0.1.0',
-    summary: 'Reusable, extensible presence primitives for any application building on CKB.',
+    version: '0.2.0',
+    summary: 'Reusable, extensible presence and participation primitives for any application building on CKB.',
     proofDrivers: [
       createDynamicQrProofDriver(),
       createPlainEventIdProofDriver(),
+      createSignedClaimProofDriver(),
+      createSubmissionProofDriver(),
     ],
     artifactDrivers: [
-      createCkbBadgeArtifactDriver(),
-      createEventAnchorArtifactDriver(),
+      createCkbParticipationBadgeArtifactDriver(),
+      createCkbScopeAnchorArtifactDriver(),
     ],
     policyExtensions: [
       createTimedWindowPolicyExtension(),
       createBackendObservationPolicyExtension(),
+      createOrganizerAttestationPolicyExtension(),
+      createSubmissionReviewPolicyExtension(),
     ],
   });
 }

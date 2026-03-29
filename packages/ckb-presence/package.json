@@ -1,20 +1,26 @@
 {
   "name": "ckb-pop-kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Reusable presence primitives for applications building on Nervos CKB.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/RobaireTH/ckb-pop#readme",
+  "bugs": {
+    "url": "https://github.com/RobaireTH/ckb-pop/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "https://github.com/petelguese/ckb-pop.git",
+    "url": "git+https://github.com/RobaireTH/ckb-pop.git",
     "directory": "packages/ckb-presence"
   },
   "keywords": [
     "ckb",
     "nervos",
     "presence",
+    "participation",
     "proof-of-presence",
-    "attendance",
+    "hackathon",
+    "sbt",
     "badge"
   ],
   "sideEffects": false,

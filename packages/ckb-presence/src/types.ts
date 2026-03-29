@@ -1,5 +1,15 @@
 export type PresenceExtensionKind = 'proof' | 'artifact' | 'policy';
 export type PresenceExtensionStatus = 'reference' | 'active' | 'experimental';
+export type PresenceScopeKind =
+  | 'event'
+  | 'hackathon'
+  | 'program'
+  | 'course'
+  | 'campaign'
+  | 'bounty'
+  | 'membership'
+  | 'custom';
+export type ParticipationMode = 'in-person' | 'online' | 'hybrid' | 'async';
 
 export interface PresenceExtensionSummary {
   id: string;
@@ -15,6 +25,18 @@ export interface PresenceProofResolution {
   raw: string;
   timestampMs?: number;
   metadata?: Record<string, unknown>;
+}
+
+export interface PresenceSignedClaim {
+  scopeId: string;
+  recipientAddress: string;
+  claimId: string;
+  proofDriver: string;
+  proofRef: string;
+  issuerAddress: string;
+  issuedAt: number;
+  expiresAt?: number | null;
+  issuerSignature: string;
 }
 
 export interface PresenceProofDriver {
@@ -73,28 +95,34 @@ export interface PresenceBackendManifest extends PresenceModuleManifest {
   notes: string[];
 }
 
-export interface PresenceEventMetadata {
+export interface PresenceScopeMetadata {
   name: string;
   description?: string;
   imageUrl?: string;
   location?: string;
   startTime?: string | null;
   endTime?: string | null;
+  scopeKind?: PresenceScopeKind;
+  participationMode?: ParticipationMode;
   [key: string]: unknown;
 }
 
-export interface PresenceEventRecord {
+export interface PresenceScopeRecord {
   id: string;
   namespace: string;
   creatorAddress: string;
   activatedAt: string;
   anchorTxHash?: string;
-  metadata: PresenceEventMetadata;
+  metadata: PresenceScopeMetadata;
 }
+
+export type PresenceEventMetadata = PresenceScopeMetadata;
+export type PresenceEventRecord = PresenceScopeRecord;
 
 export interface PresenceArtifactRecord {
   id: string;
   kind: string;
+  scopeId: string;
   eventId: string;
   ownerAddress: string;
   mintedAt: string;
@@ -119,13 +147,17 @@ export interface PresenceModuleConfig {
   policyExtensions?: PresencePolicyExtension[];
 }
 
-export interface CreatePresenceEventInput {
+export interface CreatePresenceScopeInput {
   name: string;
   date?: string;
   location?: string;
   description?: string;
   imageUrl?: string;
+  scopeKind?: PresenceScopeKind;
+  participationMode?: ParticipationMode;
 }
+
+export type CreatePresenceEventInput = CreatePresenceScopeInput;
 
 export interface CreatePresenceIntentPayload {
   creator_address: string;
@@ -138,6 +170,8 @@ export interface CreatePresenceIntentPayload {
     location: string | null;
     start_time: string | null;
     end_time: string | null;
+    scope_kind: PresenceScopeKind | null;
+    participation_mode: ParticipationMode | null;
   };
 }
 
@@ -150,6 +184,8 @@ export interface ReferenceActiveEvent {
     location?: string | null;
     start_time?: string | null;
     end_time?: string | null;
+    scope_kind?: PresenceScopeKind | null;
+    participation_mode?: ParticipationMode | null;
     [key: string]: unknown;
   };
   creator_address: string;
