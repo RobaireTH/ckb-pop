@@ -19,14 +19,20 @@ pub fn extract_type_id(args: &Bytes) -> Option<&[u8]> {
 	}
 }
 
-/// Extract event_id_hash from badge args (bytes 20–39).
+/// Extract scope_id_hash from badge args (bytes 20–39).
 #[inline]
-pub fn extract_event_id_hash(args: &Bytes) -> Option<&[u8]> {
+pub fn extract_scope_id_hash(args: &Bytes) -> Option<&[u8]> {
 	if args.len() >= 40 {
 		Some(&args[20..40])
 	} else {
 		None
 	}
+}
+
+/// Backward-compatible alias for event-oriented callers.
+#[inline]
+pub fn extract_event_id_hash(args: &Bytes) -> Option<&[u8]> {
+	extract_scope_id_hash(args)
 }
 
 /// Extract recipient/creator hash from badge args (bytes 40–59).

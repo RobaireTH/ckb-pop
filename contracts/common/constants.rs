@@ -8,10 +8,10 @@ pub const SCHEMA_VERSION: &str = "1";
 /// 20 bytes matches CKB's blake160 security level used for lock script args.
 pub const HASH_LEN: usize = 20;
 
-/// Length of badge type script args (type_id + event_id_hash + recipient_hash), each 20 bytes.
+/// Length of badge type script args (type_id + scope_id_hash + recipient_hash), each 20 bytes.
 pub const BADGE_ARGS_LEN: usize = 60;
 
-/// Length of event anchor type script args (event_id_hash + creator_hash), each 20 bytes.
+/// Length of event anchor type script args (scope_id_hash + creator_hash), each 20 bytes.
 pub const ANCHOR_ARGS_LEN: usize = 40;
 
 /// Error codes

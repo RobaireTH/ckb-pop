@@ -1,7 +1,7 @@
 //! Event Anchor Type Script
 //!
-//! Anchors event existence on-chain for the CKB-PoP protocol.
-//! Creates an immutable record that an event was created by a specific address.
+//! Anchors issuance scope existence on-chain for the CKB-PoP protocol.
+//! Creates an immutable record that a scope was created by a specific address.
 //!
 //! This contract is OPTIONAL but strengthens decentralization by:
 //!   - Removing backend as the first place an event appears
@@ -9,10 +9,10 @@
 //!   - Enabling trustless event discovery
 //!
 //! Cell data should contain JSON metadata:
-//!   { event_id, creator_address, metadata_hash, created_at_block }
+//!   { scope_id, creator_address, metadata_hash, created_at_block }
 //!
 //! Args format (40 bytes):
-//!   - bytes 0-19:  SHA256(event_id)[..20]
+//!   - bytes 0-19:  SHA256(scope_id)[..20]
 //!   - bytes 20-39: SHA256(creator_address)[..20]
 
 #![no_std]
@@ -27,7 +27,7 @@ use ckb_std::{
     high_level::{load_script, load_cell_type},
 };
 
-/// Args length: event_id_hash (20) + creator_address_hash (20)
+/// Args length: scope_id_hash (20) + creator_address_hash (20)
 const ARGS_LEN: usize = 40;
 
 /// Error codes

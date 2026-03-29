@@ -1,29 +1,44 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "CKB-PoP Event Anchor Metadata",
-  "description": "Immutable metadata for an event anchor cell",
+  "title": "CKB-PoP Scope Anchor Metadata",
+  "description": "Immutable metadata for an issuance scope anchor cell",
   "type": "object",
-  "required": ["event_id", "creator_address", "created_at_block"],
+  "required": ["scope_id", "creator", "metadata_hash"],
   "properties": {
-    "event_id": {
+    "scope_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Unique event identifier"
+      "description": "Unique issuance scope identifier"
+    },
+    "scope_kind": {
+      "type": "string",
+      "enum": ["event", "hackathon", "program", "course", "campaign", "bounty", "membership", "custom"],
+      "description": "Logical type of scope being anchored"
+    },
+    "creator": {
+      "type": "string",
+      "pattern": "^(ckb1|ckt1)",
+      "description": "Scope creator's CKB address"
     },
     "creator_address": {
       "type": "string",
       "pattern": "^(ckb1|ckt1)",
-      "description": "Event creator's CKB address"
+      "description": "Legacy alias for creator"
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Legacy alias for scope_id"
     },
     "metadata_hash": {
       "type": "string",
       "pattern": "^0x[a-fA-F0-9]{64}$",
-      "description": "Hash of off-chain event metadata (name, description, etc.)"
+      "description": "Hash of off-chain scope metadata (name, description, rules, etc.)"
     },
     "created_at_block": {
       "type": "integer",
       "minimum": 0,
-      "description": "Block number when anchor was created"
+      "description": "Optional block number when anchor was created"
     }
   },
   "additionalProperties": false

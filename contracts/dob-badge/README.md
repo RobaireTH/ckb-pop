@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Represent a cryptographically unique proof-of-presence badge owned by a CKB address.
+Represent a cryptographically unique participation badge owned by a CKB address.
 
 ### The chain knows:
 - This badge exists
@@ -12,7 +12,7 @@ Represent a cryptographically unique proof-of-presence badge owned by a CKB addr
 - This address owns it
 
 ### The chain does NOT know:
-- How attendance was verified
+- How participation was verified
 - What QR was shown
 - What backend was used
 
@@ -22,7 +22,7 @@ Represent a cryptographically unique proof-of-presence badge owned by a CKB addr
 
 ### Responsibilities (ONLY):
 
-- Enforce one badge per `(event_id, address)`
+- Enforce one badge per `(scope_id, address)`
 - Bind immutable metadata
 - Prevent duplication
 
@@ -30,7 +30,7 @@ Represent a cryptographically unique proof-of-presence badge owned by a CKB addr
 
 - Verify signatures
 - Verify timestamps
-- Verify attendance logic
+- Verify participation logic
 - Call any oracle or backend
 
 ---
@@ -40,7 +40,7 @@ Represent a cryptographically unique proof-of-presence badge owned by a CKB addr
 ```rust
 struct BadgeArgs {
     type_id: [u8; 20],                    // blake2b(first_input_outpoint || output_index)[..20]
-    event_id_hash: [u8; 20],              // sha256(event_id)[..20]
+    scope_id_hash: [u8; 20],              // sha256(scope_id)[..20]
     recipient_address_hash: [u8; 20],     // sha256(recipient_address)[..20]
 }
 ```
@@ -53,7 +53,7 @@ The type script uses args to enforce uniqueness.
 
 ## Validation Rules
 
-1. **Exactly one output badge** per `(event_id_hash, recipient_address_hash)`
+1. **Exactly one output badge** per `(scope_id_hash, recipient_address_hash)`
 2. **Badge cannot be re-minted** with same args (checked via cell deps or type ID pattern)
 3. **Metadata is immutable** after mint
 
@@ -67,16 +67,19 @@ Stored as immutable cell data:
 {
   "protocol": "ckb-pop",
   "version": "1",
+  "scope_id": "string",
+  "scope_kind": "event|hackathon|program|course|campaign|bounty|membership|custom",
+  "participation_mode": "in-person|online|hybrid|async",
   "event_id": "string",
   "issuer": "ckb1...",
   "issued_at_block": 123456,
-  "attendance_proof_hash": "0x..."
+  "proof_hash": "0x..."
 }
 ```
 
 ### Important:
 
-- `attendance_proof_hash` is **opaque** to the chain
+- `proof_hash` is **opaque** to the chain
 - Chain does NOT interpret it
 - It allows anyone to correlate off-chain proofs if they want
 
@@ -85,7 +88,7 @@ Stored as immutable cell data:
 ## Minting Flow
 
 ```
-1. Off-chain: Attendance proof verified cryptographically
+1. Off-chain: Participation proof verified cryptographically
 2. Off-chain: Backend builds unsigned tx with badge type script
 3. Client: Signs transaction (user custody)
 4. On-chain: Type script validates uniqueness

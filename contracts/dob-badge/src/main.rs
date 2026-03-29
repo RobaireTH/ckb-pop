@@ -14,7 +14,7 @@ use ckb_std::{
 	syscalls::load_cell,
 };
 
-/// Args layout: type_id (20) + event_id_hash (20) + recipient_address_hash (20)
+/// Args layout: type_id (20) + scope_id_hash (20) + recipient_address_hash (20)
 const ARGS_LEN: usize = 60;
 
 /// First 20 bytes of the blake2b type_id hash stored in args.
