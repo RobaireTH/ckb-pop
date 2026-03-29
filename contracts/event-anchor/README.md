@@ -4,17 +4,17 @@
 
 ## Purpose
 
-Anchor an event's existence on-chain, immutably. This strengthens decentralization optics.
+Anchor an issuance scope's existence on-chain, immutably. This strengthens decentralization optics.
 
 ### This avoids:
-- Backend being the first place an event appears
-- Disputes over "when did this event exist?"
+- Backend being the first place a scope appears
+- Disputes over "when did this scope exist?"
 
 ### What the Event Anchor Is
 
 A single on-chain cell created by the event creator. It represents:
 
-> "This event exists, and this address claims authorship."
+> "This issuance scope exists, and this address claims authorship."
 
 ---
 
@@ -23,7 +23,7 @@ A single on-chain cell created by the event creator. It represents:
 ### Responsibilities:
 
 - Ensure immutability
-- Ensure single creation per event
+- Ensure single creation per scope
 - Bind creator address
 
 ### It does NOT:
@@ -40,10 +40,12 @@ A single on-chain cell created by the event creator. It represents:
 
 ```rust
 struct EventAnchorArgs {
-    event_id_hash: [u8; 32],     // hash(event_id)
-    creator_address_hash: [u8; 32],
+    scope_id_hash: [u8; 20],        // sha256(scope_id)[..20]
+    creator_address_hash: [u8; 20], // sha256(creator_address)[..20]
 }
 ```
+
+Total: 40 bytes. Fields are truncated to 20 bytes (160-bit, matching CKB's blake160 security level).
 
 ---
 
@@ -53,8 +55,9 @@ Stored as immutable cell data:
 
 ```json
 {
-  "event_id": "string",
-  "creator_address": "ckb1...",
+  "scope_id": "string",
+  "scope_kind": "event|hackathon|program|course|campaign|bounty|membership|custom",
+  "creator": "ckb1...",
   "metadata_hash": "0x...",
   "created_at_block": 123456
 }
@@ -80,7 +83,7 @@ Both are verifiable without backend trust.
 ## Verification Flow
 
 Anyone can:
-1. Query chain for event anchor cell by `event_id_hash`
+1. Query chain for scope anchor cell by `scope_id_hash`
 2. Verify creator authorship from cell data
 3. Derive event legitimacy without trusting any server
 
@@ -91,7 +94,7 @@ Anyone can:
 The DOB Badge contract is sufficient for the core protocol. Event anchors add:
 
 - Stronger provenance guarantees
-- Earlier on-chain timestamp for events
-- Reduced reliance on backend for event discovery
+- Earlier on-chain timestamp for scopes
+- Reduced reliance on backend for scope discovery
 
 Projects can choose based on their trust model.

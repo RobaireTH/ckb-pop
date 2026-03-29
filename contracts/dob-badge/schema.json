@@ -1,9 +1,9 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "CKB-PoP Badge Metadata",
-  "description": "Immutable metadata for a proof-of-presence badge",
+  "title": "CKB-PoP Participation Badge Metadata",
+  "description": "Immutable metadata for a participation badge or SBT",
   "type": "object",
-  "required": ["protocol", "version", "event_id", "issuer", "issued_at_block"],
+  "required": ["protocol", "version", "scope_id", "issuer", "issued_at_block"],
   "properties": {
     "protocol": {
       "type": "string",
@@ -15,25 +15,40 @@
       "pattern": "^[0-9]+$",
       "description": "Schema version"
     },
+    "scope_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique issuance scope identifier (event, hackathon, program, course, campaign, bounty, or membership)"
+    },
+    "scope_kind": {
+      "type": "string",
+      "enum": ["event", "hackathon", "program", "course", "campaign", "bounty", "membership", "custom"],
+      "description": "Logical type of participation scope"
+    },
+    "participation_mode": {
+      "type": "string",
+      "enum": ["in-person", "online", "hybrid", "async"],
+      "description": "How the participation was earned"
+    },
     "event_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Unique event identifier (tx_hash or deterministic hash)"
+      "description": "Legacy alias for scope_id used by older reference clients"
     },
     "issuer": {
       "type": "string",
       "pattern": "^(ckb1|ckt1)", 
-      "description": "Event creator's CKB address"
+      "description": "Scope issuer's CKB address"
     },
     "issued_at_block": {
       "type": "integer",
       "minimum": 0,
       "description": "Block number when badge was minted"
     },
-    "attendance_proof_hash": {
+    "proof_hash": {
       "type": "string",
       "pattern": "^0x[a-fA-F0-9]{64}$",
-      "description": "Opaque hash of off-chain attendance proof (not interpreted by chain)"
+      "description": "Opaque hash of off-chain participation proof (not interpreted by chain)"
     }
   },
   "additionalProperties": false

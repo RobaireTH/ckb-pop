@@ -1,7 +1,18 @@
 import { Injectable, signal, inject, computed } from '@angular/core';
+import {
+  createReferenceCkbPresenceModule,
+  sha256Hex,
+  type PresenceEventRecord,
+  type PresenceScopeKind,
+  type ParticipationMode,
+  type ReferenceActiveEvent,
+  type ReferenceBadgeObservation,
+} from '../lib/ckb-presence';
 import { WalletService } from './wallet.service';
 import { ToastService } from './toast.service';
 import { ContractService, ChainRejectionError } from './contract.service';
+
+const presenceModule = createReferenceCkbPresenceModule();
 
 export interface PoPEvent {
   id: string;
@@ -9,6 +20,8 @@ export interface PoPEvent {
   date: string;
   issuer: string;
   location: string;
+  scopeKind?: PresenceScopeKind;
+  participationMode?: ParticipationMode;
   description?: string;
   imageUrl?: string;
   anchorTxHash?: string; // On-chain event anchor transaction
@@ -64,53 +77,54 @@ export class PoapService {
     );
   });
 
+  private mapPresenceEvent(event: PresenceEventRecord): PoPEvent {
+    return {
+      id: event.id,
+      name: event.metadata.name,
+      date: event.metadata.startTime || event.activatedAt,
+      issuer: event.creatorAddress,
+      location: event.metadata.location || '',
+      scopeKind: typeof event.metadata.scopeKind === 'string' ? event.metadata.scopeKind : undefined,
+      participationMode: typeof event.metadata.participationMode === 'string' ? event.metadata.participationMode : undefined,
+      description: event.metadata.description,
+      imageUrl: event.metadata.imageUrl as string | undefined,
+      anchorTxHash: event.anchorTxHash,
+    };
+  }
+
+  private mapReferenceEvent(event: ReferenceActiveEvent): PoPEvent {
+    return this.mapPresenceEvent(presenceModule.mapReferenceEvent(event));
+  }
+
+  private toPresenceEvent(event: PoPEvent): PresenceEventRecord {
+    return {
+      id: event.id,
+      namespace: 'ckb-pop',
+      creatorAddress: event.issuer,
+      activatedAt: event.date,
+      anchorTxHash: event.anchorTxHash,
+      metadata: {
+        name: event.name,
+        description: event.description,
+        imageUrl: event.imageUrl,
+        location: event.location,
+        startTime: event.date,
+        scopeKind: event.scopeKind,
+        participationMode: event.participationMode,
+      },
+    };
+  }
+
   async getEventByCode(code: string): Promise<PoPEvent> {
-    // Handle QR formats:
-    //   Simple ID:    "eventId"
-    //   Unsigned QR:  "eventId|timestamp"        (fallback, no HMAC)
-    //   Signed QR:    "eventId|timestamp|hmac"   (backend-signed)
-    let targetId = code;
-    let isDynamic = false;
-    let timestampMs = 0;
-
-    if (code.includes('|')) {
-      const parts = code.split('|');
-      targetId = parts[0];
-      const rawTs = parseInt(parts[1], 10);
-      isDynamic = true;
-
-      // Normalize timestamp: backend sends seconds, fallback sends seconds too.
-      // Detect by digit count: <1e12 = seconds, >=1e12 = milliseconds.
-      timestampMs = rawTs < 1e12 ? rawTs * 1000 : rawTs;
-    }
-
-    // Dynamic QR expiry check (60 second validity window)
-    if (isDynamic) {
-      const now = Date.now();
-      if (now - timestampMs > 60000) {
-        throw new Error('QR Code Expired. Please scan the live screen again.');
-      }
-      if (timestampMs > now + 10000) {
-        throw new Error('Invalid Time Check.');
-      }
-    }
+    const resolution = presenceModule.resolveEventLocator(code);
+    const targetId = resolution.eventId;
 
     // Query backend (source of truth) for the event
     try {
       const res = await fetch(`${this.backendUrl}/events/${targetId}`);
       if (res.ok) {
         const data = await res.json();
-        const evt = data.event;
-        return {
-          id: evt.event_id,
-          name: evt.metadata.name,
-          date: evt.metadata.start_time || evt.activated_at,
-          issuer: evt.creator_address,
-          location: evt.metadata.location || '',
-          description: evt.metadata.description,
-          imageUrl: evt.metadata.image_url,
-          anchorTxHash: evt.payment_tx_hash,
-        };
+        return this.mapReferenceEvent(data.event as ReferenceActiveEvent);
       }
     } catch {
       // Backend unreachable — fall back to local cache
@@ -126,17 +140,7 @@ export class PoapService {
       const res = await fetch(`${this.backendUrl}/events/${id}`);
       if (res.ok) {
         const data = await res.json();
-        const evt = data.event;
-        return {
-          id: evt.event_id,
-          name: evt.metadata.name,
-          date: evt.metadata.start_time || evt.activated_at,
-          issuer: evt.creator_address,
-          location: evt.metadata.location || '',
-          description: evt.metadata.description,
-          imageUrl: evt.metadata.image_url,
-          anchorTxHash: evt.payment_tx_hash,
-        };
+        return this.mapReferenceEvent(data.event as ReferenceActiveEvent);
       }
     } catch {
       // Backend unreachable — fall back to local cache
@@ -145,33 +149,22 @@ export class PoapService {
     return undefined;
   }
 
-  async createEvent(eventData: Pick<PoPEvent, 'name' | 'date' | 'location' | 'description' | 'imageUrl'>, issuerAddress: string): Promise<PoPEvent> {
+  async createEvent(eventData: Pick<PoPEvent, 'name' | 'date' | 'location' | 'description' | 'imageUrl' | 'scopeKind' | 'participationMode'>, issuerAddress: string): Promise<PoPEvent> {
     const nonce = crypto.randomUUID();
 
     // Sign creation intent with wallet
     const message = `CKB-PoP-CreateEvent|${nonce}`;
     const signature = await this.walletService.signMessage(message);
 
-    // Submit to backend — gets cryptographic event ID
-    // Backend expects Option<DateTime<Utc>> — convert date string to ISO 8601
-    const startTime = eventData.date ? new Date(eventData.date).toISOString() : null;
-
     const res = await fetch(`${this.backendUrl}/events/create`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        creator_address: issuerAddress,
-        creator_signature: signature,
+      body: JSON.stringify(presenceModule.buildCreateEventIntent({
+        creatorAddress: issuerAddress,
+        creatorSignature: signature,
         nonce,
-        metadata: {
-          name: eventData.name,
-          description: eventData.description || '',
-          image_url: eventData.imageUrl || null,
-          location: eventData.location || null,
-          start_time: startTime,
-          end_time: null,
-        }
-      })
+        event: eventData,
+      })),
     });
 
     if (!res.ok) {
@@ -179,41 +172,35 @@ export class PoapService {
       throw new Error(err.error || 'Failed to create event');
     }
 
-    const activeEvent = await res.json();
+    const activeEvent = await res.json() as ReferenceActiveEvent;
     const eventId = activeEvent.event_id;
 
     // Optional: create on-chain anchor using the backend-derived ID
     let anchorTxHash: string | undefined;
     try {
-      const metadataJson = JSON.stringify({
+      const metadataHash = `0x${await sha256Hex(JSON.stringify({
         name: eventData.name,
         date: eventData.date,
         location: eventData.location,
         description: eventData.description,
-      });
-      const encoder = new TextEncoder();
-      const metadataBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(metadataJson));
-      const metadataHash = '0x' + Array.from(new Uint8Array(metadataBuffer))
-        .map(b => b.toString(16).padStart(2, '0')).join('');
+        scopeKind: eventData.scopeKind,
+        participationMode: eventData.participationMode,
+      }))}`;
 
       anchorTxHash = await this.contractService.createEventAnchor(
         eventId,
         issuerAddress,
-        metadataHash
+        metadataHash,
+        eventData.scopeKind || 'event'
       );
     } catch (e) {
       console.warn("Event anchor creation failed (non-critical):", e);
     }
 
     const newEvent: PoPEvent = {
-      id: eventId,
-      name: eventData.name,
-      date: eventData.date,
-      location: eventData.location,
-      issuer: issuerAddress,
-      description: eventData.description,
-      imageUrl: eventData.imageUrl || `https://picsum.photos/seed/${Date.now()}/600/400`,
-      anchorTxHash
+      ...this.mapReferenceEvent(activeEvent),
+      imageUrl: eventData.imageUrl || this.mapReferenceEvent(activeEvent).imageUrl || `https://picsum.photos/seed/${Date.now()}/600/400`,
+      anchorTxHash,
     };
 
     this.eventsSignal.update(evts => [newEvent, ...evts]);
@@ -240,7 +227,7 @@ export class PoapService {
     }
   }
 
-  async mintBadge(event: PoPEvent, address: string): Promise<Badge> {
+  async mintBadge(event: PoPEvent, address: string, proofHash?: string): Promise<Badge> {
     // Mint badge on-chain via ContractService
     // The TYPE SCRIPT enforces uniqueness - if badge exists, chain rejects
     let txHash: string;
@@ -248,7 +235,10 @@ export class PoapService {
       txHash = await this.contractService.mintBadge(
         event.id,
         event.issuer,
-        address
+        address,
+        proofHash,
+        event.scopeKind || 'event',
+        event.participationMode || 'in-person'
       );
     } catch (err) {
       // Surface chain rejection to user
@@ -326,33 +316,30 @@ export class PoapService {
       const res = await fetch(`${this.backendUrl}/badges/observe?address=${encodeURIComponent(address)}`);
       if (!res.ok) return;
       const data = await res.json();
-      const observations: Array<{
-        event_id: string;
-        holder_address: string;
-        mint_tx_hash: string;
-        mint_block_number: number;
-        verified_at_block: number;
-        observed_at: string;
-      }> = data.badges || [];
+      const observations = (data.badges || []) as ReferenceBadgeObservation[];
 
       // Fetch event details for names and images
       const backendBadges: Badge[] = [];
       for (const obs of observations) {
         const event = await this.getEventById(obs.event_id);
+        const mappedBadge = presenceModule.mapReferenceBadge(
+          obs,
+          event ? this.toPresenceEvent(event) : undefined
+        );
 
         // If block number is 0 (pending), try resolving it now.
-        let blockNumber = obs.mint_block_number > 0 ? obs.mint_block_number : undefined;
+        let blockNumber = mappedBadge.blockNumber;
         if (!blockNumber) {
           blockNumber = await this.resolveBlockNumber(obs.mint_tx_hash);
         }
 
         backendBadges.push({
-          id: `${obs.event_id}-${obs.holder_address}`,
-          eventId: obs.event_id,
-          eventName: event?.name || obs.event_id,
-          mintDate: obs.observed_at,
-          txHash: obs.mint_tx_hash,
-          imageUrl: event?.imageUrl || `https://picsum.photos/seed/${obs.event_id}/400/400`,
+          id: mappedBadge.id,
+          eventId: mappedBadge.eventId,
+          eventName: String(mappedBadge.metadata.eventName),
+          mintDate: mappedBadge.mintedAt,
+          txHash: mappedBadge.txHash,
+          imageUrl: String(mappedBadge.metadata.imageUrl || `https://picsum.photos/seed/${obs.event_id}/400/400`),
           role: 'Attendee',
           blockNumber,
         });
@@ -481,41 +468,23 @@ export class PoapService {
       const res = await fetch(`${this.backendUrl}/events`);
       if (!res.ok) return;
       const data = await res.json();
-
-      type RawEvent = {
-        event_id: string;
-        metadata: { name: string; start_time?: string; description?: string; image_url?: string; location?: string };
-        activated_at: string;
-        creator_address: string;
-        payment_tx_hash?: string;
-      };
-
-      const mapEvent = (e: RawEvent): PoPEvent => ({
-        id: e.event_id,
-        name: e.metadata.name,
-        date: e.metadata.start_time || e.activated_at,
-        issuer: e.creator_address,
-        location: e.metadata.location || '',
-        description: e.metadata.description,
-        imageUrl: e.metadata.image_url,
-        anchorTxHash: e.payment_tx_hash,
-      });
+      const events = (data.events as ReferenceActiveEvent[] || []);
 
       // Events owned by the connected wallet address.
-      const owned: PoPEvent[] = (data.events as RawEvent[] || [])
+      const owned: PoPEvent[] = events
         .filter(e => e.creator_address === address)
-        .map(mapEvent);
+        .map(event => this.mapReferenceEvent(event));
 
       // Events watched by ID — CLI-created events linked by event ID so they
       // appear in My Events even when the CLI wallet differs from the browser
       // wallet.
       const watchedIds = this.watchedIdsSignal();
-      const allEvents: Map<string, RawEvent> = new Map(
-        (data.events as RawEvent[] || []).map(e => [e.event_id, e])
+      const allEvents: Map<string, ReferenceActiveEvent> = new Map(
+        events.map(e => [e.event_id, e])
       );
       const watched: PoPEvent[] = watchedIds
         .filter(id => allEvents.has(id) && !owned.some(e => e.id === id))
-        .map(id => mapEvent(allEvents.get(id)!));
+        .map(id => this.mapReferenceEvent(allEvents.get(id)!));
 
       const toAdd = [...owned, ...watched];
 

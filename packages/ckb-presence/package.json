@@ -1,0 +1,64 @@
+{
+  "name": "ckb-pop-kit",
+  "version": "0.2.0",
+  "description": "Reusable presence primitives for applications building on Nervos CKB.",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/RobaireTH/ckb-pop#readme",
+  "bugs": {
+    "url": "https://github.com/RobaireTH/ckb-pop/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RobaireTH/ckb-pop.git",
+    "directory": "packages/ckb-presence"
+  },
+  "keywords": [
+    "ckb",
+    "nervos",
+    "presence",
+    "participation",
+    "proof-of-presence",
+    "hackathon",
+    "sbt",
+    "badge"
+  ],
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./ckb": {
+      "types": "./dist/ckb.d.ts",
+      "import": "./dist/ckb.js"
+    },
+    "./module": {
+      "types": "./dist/module.d.ts",
+      "import": "./dist/module.js"
+    },
+    "./types": {
+      "types": "./dist/types.d.ts",
+      "import": "./dist/types.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "npm run clean && npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,44 +1,71 @@
-# PoP Network 
+# CKB Presence Module
 
-Soulbound attendance badges on Nervos CKB. Non-transferable, permissionless, on-chain.
+Reusable presence primitives for applications building on Nervos CKB.
 
-CKB-PoP or PoP Network lets you issue cryptographic proof that someone was physically present. Attendees scan a QR code, sign with their wallet, and receive a badge permanently bound to their address. No one controls the protocol — the chain enforces uniqueness and ownership, everything else is off-chain.
+This repository still contains the PoP Network reference app, but the important boundary is now:
 
-## How it works
+- `packages/ckb-presence/` is the reusable TypeScript package
+- `scripts/` is the reference backend adapter
+- `contracts/` are the CKB-enforced reference artifacts
+- `frontend/src/components/` is a reference product that consumes the module
 
-1. **Organizer creates an event** — metadata is signed and anchored on-chain.
-2. **Organizer opens an attendance window** — a time-bound secret generates rotating QR codes.
-3. **Attendee scans the QR** — signs an attendance proof with their wallet.
-4. **Badge is minted** — a soulbound cell is created on CKB, one per person per event.
+## What The Module Does
 
-The QR codes rotate every 30 seconds with HMAC verification. Replay is impossible. The badge is a CKB cell with a type script that enforces: one badge per `(event_id, address)` pair, non-transferable, immutable.
+The module lets a CKB app:
+
+1. define a presence event
+2. issue or parse a proof locator such as a dynamic QR
+3. apply verification policy such as timed windows
+4. mint or observe a presence artifact on CKB
+5. expose its capabilities to integrators through a backend manifest
+
+The reference artifact is still a soulbound badge, but the module now exposes explicit extension points instead of assuming that one UX, one proof format, and one backend are the whole product.
+
+## Reusable Surfaces
+
+### TypeScript Kernel
+
+`packages/ckb-presence/` includes:
+
+- extension registries for proof drivers, artifact drivers, and policy modules
+- event locator parsing and validation
+- event creation payload shaping
+- mapping helpers for reference backend event and badge records
+- CKB helpers for anchor args, artifact args, and hashed cell data
+
+### Backend Manifest
+
+The Rust backend now exposes:
+
+- `GET /api/module/manifest`
+
+That endpoint describes:
+
+- module name, namespace, and version
+- installed proof, artifact, and policy extensions
+- reference API routes
+- runtime support such as HRP and badge sync availability
+
+### Reference App
+
+The Angular app remains useful, but it is no longer the boundary of the system. `poap.service.ts`, `contract.service.ts`, and `/integrate` now consume the shared package rather than owning the protocol logic themselves.
 
 ## Architecture
 
+```text
+packages/ckb-presence/         publishable TypeScript package
+frontend/                       Angular 21 reference app
+scripts/                        Rust reference backend (Axum, SQLite, CKB RPC)
+contracts/                      RISC-V type scripts deployed on CKB
 ```
-frontend/          Angular 21 web app (Vite, Tailwind)
-scripts/           Rust backend (Axum, SQLite, CKB RPC)
-contracts/         RISC-V type scripts deployed on CKB
-```
 
-**Frontend** handles wallet connection (JoyID, MetaMask, UniSat, etc. via `@ckb-ccc/ccc`), QR scanning, transaction building, and badge display.
-
-**Backend** coordinates event lifecycle, generates QR payloads, verifies attendance proofs, and observes badge cells from the chain. It does not hold keys or have special authority. It's a convenience layer that can be replaced.
-
-**Contracts** are minimal. Two type scripts:
-
-- **dob-badge** — Enforces badge uniqueness and ownership. Args: `SHA256(event_id) || SHA256(address)`. Rejects duplicates.
-- **event-anchor** — Immutable on-chain record of an event. Optional but strengthens decentralization.
-
-The contracts don't know what "attendance" or "events" are. They enforce structure. Presence is proven cryptographically off-chain.
-
-## Running locally
+## Running Locally
 
 ### Prerequisites
 
 - Node.js 20+
-- Rust (latest stable)
-- CKB devnet or testnet RPC access
+- Rust stable
+- CKB devnet, testnet, or mainnet RPC access
 
 ### Frontend
 
@@ -50,7 +77,7 @@ npm run dev
 
 Configure via `.env`:
 
-```
+```text
 VITE_CKB_NETWORK=testnet
 VITE_CKB_RPC_URL=https://testnet.ckb.dev/rpc
 VITE_BACKEND_URL=http://localhost:3001/api
@@ -73,38 +100,37 @@ cargo run
 
 Configure via `.env`:
 
-```
+```text
 CKB_NETWORK=testnet
 CKB_RPC_URL=https://testnet.ckb.dev/rpc
 DATABASE_URL=sqlite:./ckb_pop.db?mode=rwc
+ALLOWED_ORIGINS=http://localhost:3000,https://your-frontend.example
 ```
 
 ### Contracts
-
-Build with the CKB contracts toolchain:
 
 ```bash
 cd contracts
 capsule build --release
 ```
 
-Deploy info lives in `contracts/deploy-info.json`.
+## Design Decisions
 
-## Deployment
+**Why keep verification mostly off-chain?** It keeps contracts minimal and lets different apps plug in new proof drivers and policy layers without redeploying the chain layer.
 
-- **Frontend** is deployed on Vercel.
-- **Backend** runs on Fly.io (Singapore region, SQLite on persistent volume).
-- **Contracts** are deployed to CKB testnet via `ckb-cli`.
+**Why keep the backend non-authoritative?** The backend is an adapter, not the protocol. It can cache state, observe confirmations, and issue convenience APIs, but it does not get to override CKB invariants.
 
-## Design decisions
+**Why add an integrator route?** A reusable module is not real if outside builders need to read source files just to discover its boundaries. `/integrate` and `/api/module/manifest` make the module legible.
 
-**Why soulbound?** Attendance proof loses meaning if you can sell it. The badge is bound to the address that was physically present.
+**Why keep the PoP app at all?** A reusable module without a working reference consumer tends to rot. The PoP app proves the kernel, backend adapter, and contracts still compose into a real product.
 
-**Why off-chain verification?** Keeping presence logic off-chain means the contracts stay tiny (under 100 lines each), gas costs are minimal, and the verification scheme can evolve without redeploying contracts. Anyone can independently verify a badge by checking the chain.
+## Publishing
 
-**Why CKB?** The cell model naturally represents unique, owned assets. Type scripts enforce invariants at the protocol level. RISC-V means contracts compile from standard Rust.
+The reusable package lives in `packages/ckb-presence/` and is set up to publish as `ckb-pop-kit`.
 
-**Why a backend at all?** Convenience. The backend coordinates QR rotation, caches event state, and provides an API for the frontend. But it has no privileged access — it can't forge badges, alter events, or override the chain. A CLI or another backend could replace it entirely.
+- Local package build: `npx --prefix frontend tsc -p packages/ckb-presence/tsconfig.build.json`
+- CI validates the package with `.github/workflows/ci.yml`
+- npm publishing is wired through `.github/workflows/publish-presence.yml` and expects `NPM_TOKEN`
 
 ## License
 

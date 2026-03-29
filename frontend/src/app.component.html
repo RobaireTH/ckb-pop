@@ -26,15 +26,59 @@
     <main id="main-content" class="flex-1 relative z-10 pb-20 md:pb-0 overflow-x-hidden" role="main" tabindex="-1">
       <router-outlet></router-outlet>
     </main>
-    <footer class="border-t border-white/5 bg-zinc-950/80 backdrop-blur mt-auto hidden md:block">
-      <div class="mx-auto max-w-7xl px-6 py-6 md:py-8 flex flex-col md:flex-row items-center justify-center md:justify-between gap-4 lg:px-8">
-        <p class="text-center text-xs leading-5 text-zinc-500 order-2 md:order-1">
-          &copy; 2026 Proof of Presence Network.
-        </p>
-        <a href="https://www.nervos.org" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 text-xs text-zinc-500 hover:text-white transition-colors order-1 md:order-2">
-          <img src="https://www.google.com/s2/favicons?domain=nervos.org&sz=128" class="h-4 w-4 rounded-full" alt="Nervos Logo">
-          <span>Powered by the Nervos Ecosystem</span>
-        </a>
+    <footer class="mt-auto hidden md:block bg-[radial-gradient(circle_at_top,rgba(163,230,53,0.06),transparent_28%),rgba(6,6,6,0.92)] backdrop-blur-xl">
+      <div class="mx-auto max-w-[1400px] px-6 pt-16 pb-10 lg:px-10">
+        <div class="grid grid-cols-2 lg:grid-cols-6 gap-10">
+          <div class="col-span-2">
+            <div class="flex items-center gap-3 mb-4">
+              <div class="w-10 h-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center">
+                <img src="assets/ckb-pop.png" class="w-6 h-6 object-contain" alt="">
+              </div>
+              <div>
+                <div class="font-display text-xl text-white tracking-tight">CKB PoP</div>
+                <div class="font-mono text-[9px] uppercase tracking-[0.18em] text-zinc-500">Presence Protocol</div>
+              </div>
+            </div>
+            <p class="text-sm leading-7 text-zinc-500 max-w-sm">
+              A scope-based participation protocol for events, hackathons, programs, and communities built on Nervos CKB.
+            </p>
+          </div>
+
+          <div>
+            <div class="text-sm text-white mb-4">Product</div>
+            <div class="flex flex-col gap-3 text-sm text-zinc-500">
+              <a href="/#/check-in" class="hover:text-white transition-colors">Verify</a>
+              <a href="/#/claim" class="hover:text-white transition-colors">Claim</a>
+              <a href="/#/create" class="hover:text-white transition-colors">Create</a>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-sm text-white mb-4">Developers</div>
+            <div class="flex flex-col gap-3 text-sm text-zinc-500">
+              <a href="/#/integrate" class="hover:text-white transition-colors">Integrate</a>
+              <a href="https://docs.ckb-pop.xyz" target="_blank" rel="noreferrer" class="hover:text-white transition-colors">Docs</a>
+              <a href="https://www.npmjs.com/package/ckb-pop-kit" target="_blank" rel="noreferrer" class="hover:text-white transition-colors">npm package</a>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-sm text-white mb-4">Protocol</div>
+            <div class="flex flex-col gap-3 text-sm text-zinc-500">
+              <a href="https://github.com/RobaireTH/ckb-pop" target="_blank" rel="noreferrer" class="hover:text-white transition-colors">GitHub</a>
+              <a href="https://www.nervos.org" target="_blank" rel="noreferrer" class="hover:text-white transition-colors">Nervos</a>
+              <span class="text-zinc-600">All systems operational</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-12 flex items-center justify-between gap-4 flex-wrap text-sm text-zinc-600">
+          <p>&copy; 2026 Proof of Presence Network.</p>
+          <div class="flex items-center gap-3">
+            <span class="w-10 h-px bg-gradient-to-r from-transparent via-lime-400/35 to-transparent"></span>
+            <p class="font-mono text-[10px] uppercase tracking-[0.16em]">Self-custody by default</p>
+          </div>
+        </div>
       </div>
     </footer>
     <app-bottom-nav></app-bottom-nav>

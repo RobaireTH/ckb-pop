@@ -1,5 +1,7 @@
 mod cache;
 mod crypto;
+mod http;
+mod module;
 mod observe;
 mod relay;
 mod routes;
@@ -9,9 +11,8 @@ mod types;
 
 use std::sync::Arc;
 
-use axum::Router;
+use axum::{middleware, Router};
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::state::AppState;
@@ -19,7 +20,9 @@ use crate::state::AppState;
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
         .with(tracing_subscriber::fmt::layer())
         .init();
 
@@ -32,17 +35,28 @@ async fn main() {
         tracing::warn!("No {} found, using defaults for {}", env_file, ckb_network);
     }
 
-    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:ckb_pop.db".to_string());
-    let ckb_rpc_url = std::env::var("CKB_RPC_URL").unwrap_or_else(|_| "https://testnet.ckb.dev/rpc".to_string());
+    let database_url =
+        std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:ckb_pop.db".to_string());
+    let ckb_rpc_url =
+        std::env::var("CKB_RPC_URL").unwrap_or_else(|_| "https://testnet.ckb.dev/rpc".to_string());
 
     tracing::info!("Network: {}, RPC: {}", ckb_network, ckb_rpc_url);
 
     let dob_code_hash = std::env::var("DOB_BADGE_CODE_HASH").ok();
-    let address_hrp = if ckb_network == "mainnet" { "ckb" } else { "ckt" };
+    let address_hrp = if ckb_network == "mainnet" {
+        "ckb"
+    } else {
+        "ckt"
+    };
 
-    let state = AppState::new(&database_url, &ckb_rpc_url, dob_code_hash.clone(), address_hrp.to_string())
-        .await
-        .expect("Failed to initialize app state");
+    let state = AppState::new(
+        &database_url,
+        &ckb_rpc_url,
+        dob_code_hash.clone(),
+        address_hrp.to_string(),
+    )
+    .await
+    .expect("Failed to initialize app state");
 
     // Rehydrate badge data from the chain if a code hash is configured.
     if let Some(ref code_hash) = dob_code_hash {
@@ -64,15 +78,11 @@ async fn main() {
         });
     }
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     let app = Router::new()
         .nest("/api", routes::router())
         .with_state(state)
-        .layer(cors);
+        .layer(http::build_cors_layer())
+        .layer(middleware::map_response(http::set_security_headers));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
     tracing::info!("Backend listening on {}", addr);

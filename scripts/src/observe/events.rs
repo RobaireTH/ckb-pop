@@ -23,7 +23,10 @@ pub async fn observe_events(
     _rpc: &CkbRpcClient,
     _verify: bool,
 ) -> Result<EventListResponse, ObserveError> {
-    let events = cache.list_active_events().await.map_err(ObserveError::Cache)?;
+    let events = cache
+        .list_active_events()
+        .await
+        .map_err(ObserveError::Cache)?;
     Ok(EventListResponse {
         events,
         cached: true,
@@ -98,7 +101,9 @@ pub async fn activate_event_from_payment(
         return Err(ObserveError::PaymentNotConfirmed);
     }
 
-    let block_number = tx_info.block_number.ok_or(ObserveError::PaymentNotConfirmed)?;
+    let block_number = tx_info
+        .block_number
+        .ok_or(ObserveError::PaymentNotConfirmed)?;
 
     super::payments::record_payment_observation(cache, event_id, tx_hash, block_number)
         .await
@@ -202,6 +207,8 @@ mod tests {
             location: None,
             start_time: None,
             end_time: None,
+            scope_kind: None,
+            participation_mode: None,
         }
     }
 

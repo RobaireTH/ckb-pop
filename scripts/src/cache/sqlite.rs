@@ -1,9 +1,7 @@
 use chrono::{DateTime, Utc};
 use sqlx::{sqlite::SqlitePoolOptions, Pool, Sqlite};
 
-use crate::types::{
-    ActiveEvent, BadgeObservation, PaymentIntent, PaymentObservation, WindowProof,
-};
+use crate::types::{ActiveEvent, BadgeObservation, PaymentIntent, PaymentObservation, WindowProof};
 
 /// Row type returned by active_events queries.
 type EventRow = (String, String, String, String, i64, String, Option<String>);
@@ -106,7 +104,10 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn get_payment_intent(&self, event_id: &str) -> Result<Option<PaymentIntent>, sqlx::Error> {
+    pub async fn get_payment_intent(
+        &self,
+        event_id: &str,
+    ) -> Result<Option<PaymentIntent>, sqlx::Error> {
         let row: Option<(String, String, String, String, String, String)> = sqlx::query_as(
             "SELECT creator_address, creator_signature, metadata_json, preimage_json, declared_at, expires_at FROM payment_intents WHERE event_id = ?",
         )
@@ -114,19 +115,35 @@ impl Cache {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(creator_address, creator_signature, metadata_json, preimage_json, declared_at, expires_at)| {
-            PaymentIntent {
-                event_id_preimage: serde_json::from_str(&preimage_json).unwrap(),
+        Ok(row.map(
+            |(
                 creator_address,
                 creator_signature,
-                event_metadata: serde_json::from_str(&metadata_json).unwrap(),
-                declared_at: DateTime::parse_from_rfc3339(&declared_at).unwrap().with_timezone(&Utc),
-                expires_at: DateTime::parse_from_rfc3339(&expires_at).unwrap().with_timezone(&Utc),
-            }
-        }))
+                metadata_json,
+                preimage_json,
+                declared_at,
+                expires_at,
+            )| {
+                PaymentIntent {
+                    event_id_preimage: serde_json::from_str(&preimage_json).unwrap(),
+                    creator_address,
+                    creator_signature,
+                    event_metadata: serde_json::from_str(&metadata_json).unwrap(),
+                    declared_at: DateTime::parse_from_rfc3339(&declared_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    expires_at: DateTime::parse_from_rfc3339(&expires_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                }
+            },
+        ))
     }
 
-    pub async fn store_payment_observation(&self, obs: &PaymentObservation) -> Result<(), sqlx::Error> {
+    pub async fn store_payment_observation(
+        &self,
+        obs: &PaymentObservation,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT OR REPLACE INTO payment_observations (event_id, payment_tx_hash, payment_block_number, observed_at) VALUES (?, ?, ?, ?)",
         )
@@ -139,7 +156,10 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn get_payment_observation(&self, event_id: &str) -> Result<Option<PaymentObservation>, sqlx::Error> {
+    pub async fn get_payment_observation(
+        &self,
+        event_id: &str,
+    ) -> Result<Option<PaymentObservation>, sqlx::Error> {
         let row: Option<(String, String, i64, String)> = sqlx::query_as(
             "SELECT event_id, payment_tx_hash, payment_block_number, observed_at FROM payment_observations WHERE event_id = ?",
         )
@@ -147,17 +167,22 @@ impl Cache {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(event_id, payment_tx_hash, payment_block_number, observed_at)| {
-            PaymentObservation {
+        Ok(row.map(
+            |(event_id, payment_tx_hash, payment_block_number, observed_at)| PaymentObservation {
                 event_id,
                 payment_tx_hash,
                 payment_block_number: payment_block_number as u64,
-                observed_at: DateTime::parse_from_rfc3339(&observed_at).unwrap().with_timezone(&Utc),
-            }
-        }))
+                observed_at: DateTime::parse_from_rfc3339(&observed_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+            },
+        ))
     }
 
-    pub async fn get_payment_observation_by_tx(&self, tx_hash: &str) -> Result<Option<PaymentObservation>, sqlx::Error> {
+    pub async fn get_payment_observation_by_tx(
+        &self,
+        tx_hash: &str,
+    ) -> Result<Option<PaymentObservation>, sqlx::Error> {
         let row: Option<(String, String, i64, String)> = sqlx::query_as(
             "SELECT event_id, payment_tx_hash, payment_block_number, observed_at FROM payment_observations WHERE payment_tx_hash = ?",
         )
@@ -165,18 +190,23 @@ impl Cache {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(event_id, payment_tx_hash, payment_block_number, observed_at)| {
-            PaymentObservation {
+        Ok(row.map(
+            |(event_id, payment_tx_hash, payment_block_number, observed_at)| PaymentObservation {
                 event_id,
                 payment_tx_hash,
                 payment_block_number: payment_block_number as u64,
-                observed_at: DateTime::parse_from_rfc3339(&observed_at).unwrap().with_timezone(&Utc),
-            }
-        }))
+                observed_at: DateTime::parse_from_rfc3339(&observed_at)
+                    .unwrap()
+                    .with_timezone(&Utc),
+            },
+        ))
     }
 
     pub async fn store_active_event(&self, event: &ActiveEvent) -> Result<(), sqlx::Error> {
-        let window_json = event.window.as_ref().map(|w| serde_json::to_string(w).unwrap());
+        let window_json = event
+            .window
+            .as_ref()
+            .map(|w| serde_json::to_string(w).unwrap());
         sqlx::query(
             "INSERT OR REPLACE INTO active_events (event_id, metadata_json, creator_address, payment_tx_hash, payment_block_number, activated_at, window_json) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
@@ -192,7 +222,10 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn get_active_event(&self, event_id: &str) -> Result<Option<ActiveEvent>, sqlx::Error> {
+    pub async fn get_active_event(
+        &self,
+        event_id: &str,
+    ) -> Result<Option<ActiveEvent>, sqlx::Error> {
         let row: Option<EventRow> = sqlx::query_as(
             "SELECT event_id, metadata_json, creator_address, payment_tx_hash, payment_block_number, activated_at, window_json FROM active_events WHERE event_id = ?",
         )
@@ -200,23 +233,38 @@ impl Cache {
         .fetch_optional(&self.pool)
         .await?;
 
-        Ok(row.map(|(event_id, metadata_json, creator_address, payment_tx_hash, payment_block_number, activated_at, window_json)| {
-            ActiveEvent {
+        Ok(row.map(
+            |(
                 event_id,
-                metadata: serde_json::from_str(&metadata_json).unwrap(),
+                metadata_json,
                 creator_address,
                 payment_tx_hash,
-                payment_block_number: payment_block_number as u64,
-                activated_at: DateTime::parse_from_rfc3339(&activated_at).unwrap().with_timezone(&Utc),
-                window: window_json.map(|w| serde_json::from_str(&w).unwrap()),
-            }
-        }))
+                payment_block_number,
+                activated_at,
+                window_json,
+            )| {
+                ActiveEvent {
+                    event_id,
+                    metadata: serde_json::from_str(&metadata_json).unwrap(),
+                    creator_address,
+                    payment_tx_hash,
+                    payment_block_number: payment_block_number as u64,
+                    activated_at: DateTime::parse_from_rfc3339(&activated_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    window: window_json.map(|w| serde_json::from_str(&w).unwrap()),
+                }
+            },
+        ))
     }
 
     /// Look up an active event by prefix of its event_id.
     /// Returns the event if exactly one match is found.
     /// Returns an error if multiple events match (ambiguous prefix).
-    pub async fn get_active_event_by_prefix(&self, prefix: &str) -> Result<Option<ActiveEvent>, sqlx::Error> {
+    pub async fn get_active_event_by_prefix(
+        &self,
+        prefix: &str,
+    ) -> Result<Option<ActiveEvent>, sqlx::Error> {
         let pattern = format!("{}%", prefix);
         let rows: Vec<EventRow> = sqlx::query_as(
             "SELECT event_id, metadata_json, creator_address, payment_tx_hash, payment_block_number, activated_at, window_json FROM active_events WHERE event_id LIKE ? LIMIT 2",
@@ -230,17 +278,29 @@ impl Cache {
             return Ok(None);
         }
 
-        Ok(rows.into_iter().next().map(|(event_id, metadata_json, creator_address, payment_tx_hash, payment_block_number, activated_at, window_json)| {
-            ActiveEvent {
+        Ok(rows.into_iter().next().map(
+            |(
                 event_id,
-                metadata: serde_json::from_str(&metadata_json).unwrap(),
+                metadata_json,
                 creator_address,
                 payment_tx_hash,
-                payment_block_number: payment_block_number as u64,
-                activated_at: DateTime::parse_from_rfc3339(&activated_at).unwrap().with_timezone(&Utc),
-                window: window_json.map(|w| serde_json::from_str(&w).unwrap()),
-            }
-        }))
+                payment_block_number,
+                activated_at,
+                window_json,
+            )| {
+                ActiveEvent {
+                    event_id,
+                    metadata: serde_json::from_str(&metadata_json).unwrap(),
+                    creator_address,
+                    payment_tx_hash,
+                    payment_block_number: payment_block_number as u64,
+                    activated_at: DateTime::parse_from_rfc3339(&activated_at)
+                        .unwrap()
+                        .with_timezone(&Utc),
+                    window: window_json.map(|w| serde_json::from_str(&w).unwrap()),
+                }
+            },
+        ))
     }
 
     pub async fn list_active_events(&self) -> Result<Vec<ActiveEvent>, sqlx::Error> {
@@ -250,20 +310,39 @@ impl Cache {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|(event_id, metadata_json, creator_address, payment_tx_hash, payment_block_number, activated_at, window_json)| {
-            ActiveEvent {
-                event_id,
-                metadata: serde_json::from_str(&metadata_json).unwrap(),
-                creator_address,
-                payment_tx_hash,
-                payment_block_number: payment_block_number as u64,
-                activated_at: DateTime::parse_from_rfc3339(&activated_at).unwrap().with_timezone(&Utc),
-                window: window_json.map(|w| serde_json::from_str(&w).unwrap()),
-            }
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    event_id,
+                    metadata_json,
+                    creator_address,
+                    payment_tx_hash,
+                    payment_block_number,
+                    activated_at,
+                    window_json,
+                )| {
+                    ActiveEvent {
+                        event_id,
+                        metadata: serde_json::from_str(&metadata_json).unwrap(),
+                        creator_address,
+                        payment_tx_hash,
+                        payment_block_number: payment_block_number as u64,
+                        activated_at: DateTime::parse_from_rfc3339(&activated_at)
+                            .unwrap()
+                            .with_timezone(&Utc),
+                        window: window_json.map(|w| serde_json::from_str(&w).unwrap()),
+                    }
+                },
+            )
+            .collect())
     }
 
-    pub async fn update_event_window(&self, event_id: &str, window: &WindowProof) -> Result<(), sqlx::Error> {
+    pub async fn update_event_window(
+        &self,
+        event_id: &str,
+        window: &WindowProof,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query("UPDATE active_events SET window_json = ? WHERE event_id = ?")
             .bind(serde_json::to_string(window).unwrap())
             .bind(event_id)
@@ -272,7 +351,11 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn check_qr_replay(&self, event_id: &str, timestamp: i64) -> Result<bool, sqlx::Error> {
+    pub async fn check_qr_replay(
+        &self,
+        event_id: &str,
+        timestamp: i64,
+    ) -> Result<bool, sqlx::Error> {
         let count: (i64,) = sqlx::query_as(
             "SELECT COUNT(*) FROM qr_replay_log WHERE event_id = ? AND timestamp = ?",
         )
@@ -295,7 +378,10 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn cleanup_expired_replay_log(&self, before: DateTime<Utc>) -> Result<u64, sqlx::Error> {
+    pub async fn cleanup_expired_replay_log(
+        &self,
+        before: DateTime<Utc>,
+    ) -> Result<u64, sqlx::Error> {
         let result = sqlx::query("DELETE FROM qr_replay_log WHERE used_at < ?")
             .bind(before.to_rfc3339())
             .execute(&self.pool)
@@ -303,7 +389,10 @@ impl Cache {
         Ok(result.rows_affected())
     }
 
-    pub async fn store_badge_observation(&self, badge: &BadgeObservation) -> Result<(), sqlx::Error> {
+    pub async fn store_badge_observation(
+        &self,
+        badge: &BadgeObservation,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "INSERT OR REPLACE INTO badge_observations (event_id, holder_address, mint_tx_hash, mint_block_number, verified_at_block, observed_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
@@ -318,7 +407,10 @@ impl Cache {
         Ok(())
     }
 
-    pub async fn get_badges_by_address(&self, address: &str) -> Result<Vec<BadgeObservation>, sqlx::Error> {
+    pub async fn get_badges_by_address(
+        &self,
+        address: &str,
+    ) -> Result<Vec<BadgeObservation>, sqlx::Error> {
         let rows: Vec<(String, String, String, i64, i64, String)> = sqlx::query_as(
             "SELECT event_id, holder_address, mint_tx_hash, mint_block_number, verified_at_block, observed_at FROM badge_observations WHERE holder_address = ?",
         )
@@ -326,19 +418,36 @@ impl Cache {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|(event_id, holder_address, mint_tx_hash, mint_block_number, verified_at_block, observed_at)| {
-            BadgeObservation {
-                event_id,
-                holder_address,
-                mint_tx_hash,
-                mint_block_number: mint_block_number as u64,
-                verified_at_block: verified_at_block as u64,
-                observed_at: DateTime::parse_from_rfc3339(&observed_at).unwrap().with_timezone(&Utc),
-            }
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    event_id,
+                    holder_address,
+                    mint_tx_hash,
+                    mint_block_number,
+                    verified_at_block,
+                    observed_at,
+                )| {
+                    BadgeObservation {
+                        event_id,
+                        holder_address,
+                        mint_tx_hash,
+                        mint_block_number: mint_block_number as u64,
+                        verified_at_block: verified_at_block as u64,
+                        observed_at: DateTime::parse_from_rfc3339(&observed_at)
+                            .unwrap()
+                            .with_timezone(&Utc),
+                    }
+                },
+            )
+            .collect())
     }
 
-    pub async fn get_badges_by_event(&self, event_id: &str) -> Result<Vec<BadgeObservation>, sqlx::Error> {
+    pub async fn get_badges_by_event(
+        &self,
+        event_id: &str,
+    ) -> Result<Vec<BadgeObservation>, sqlx::Error> {
         let rows: Vec<(String, String, String, i64, i64, String)> = sqlx::query_as(
             "SELECT event_id, holder_address, mint_tx_hash, mint_block_number, verified_at_block, observed_at FROM badge_observations WHERE event_id = ?",
         )
@@ -346,16 +455,30 @@ impl Cache {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|(event_id, holder_address, mint_tx_hash, mint_block_number, verified_at_block, observed_at)| {
-            BadgeObservation {
-                event_id,
-                holder_address,
-                mint_tx_hash,
-                mint_block_number: mint_block_number as u64,
-                verified_at_block: verified_at_block as u64,
-                observed_at: DateTime::parse_from_rfc3339(&observed_at).unwrap().with_timezone(&Utc),
-            }
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    event_id,
+                    holder_address,
+                    mint_tx_hash,
+                    mint_block_number,
+                    verified_at_block,
+                    observed_at,
+                )| {
+                    BadgeObservation {
+                        event_id,
+                        holder_address,
+                        mint_tx_hash,
+                        mint_block_number: mint_block_number as u64,
+                        verified_at_block: verified_at_block as u64,
+                        observed_at: DateTime::parse_from_rfc3339(&observed_at)
+                            .unwrap()
+                            .with_timezone(&Utc),
+                    }
+                },
+            )
+            .collect())
     }
 
     /// Return all badges with `mint_block_number = 0` (pending confirmation).
@@ -366,20 +489,38 @@ impl Cache {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|(event_id, holder_address, mint_tx_hash, mint_block_number, verified_at_block, observed_at)| {
-            BadgeObservation {
-                event_id,
-                holder_address,
-                mint_tx_hash,
-                mint_block_number: mint_block_number as u64,
-                verified_at_block: verified_at_block as u64,
-                observed_at: DateTime::parse_from_rfc3339(&observed_at).unwrap().with_timezone(&Utc),
-            }
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(
+                |(
+                    event_id,
+                    holder_address,
+                    mint_tx_hash,
+                    mint_block_number,
+                    verified_at_block,
+                    observed_at,
+                )| {
+                    BadgeObservation {
+                        event_id,
+                        holder_address,
+                        mint_tx_hash,
+                        mint_block_number: mint_block_number as u64,
+                        verified_at_block: verified_at_block as u64,
+                        observed_at: DateTime::parse_from_rfc3339(&observed_at)
+                            .unwrap()
+                            .with_timezone(&Utc),
+                    }
+                },
+            )
+            .collect())
     }
 
     /// Update the block number for a confirmed badge transaction.
-    pub async fn update_badge_block_number(&self, tx_hash: &str, block_number: u64) -> Result<(), sqlx::Error> {
+    pub async fn update_badge_block_number(
+        &self,
+        tx_hash: &str,
+        block_number: u64,
+    ) -> Result<(), sqlx::Error> {
         sqlx::query(
             "UPDATE badge_observations SET mint_block_number = ?, verified_at_block = ? WHERE mint_tx_hash = ?",
         )
@@ -393,11 +534,9 @@ impl Cache {
 
     /// Return all event IDs from active_events.
     pub async fn list_all_event_ids(&self) -> Result<Vec<String>, sqlx::Error> {
-        let rows: Vec<(String,)> = sqlx::query_as(
-            "SELECT event_id FROM active_events",
-        )
-        .fetch_all(&self.pool)
-        .await?;
+        let rows: Vec<(String,)> = sqlx::query_as("SELECT event_id FROM active_events")
+            .fetch_all(&self.pool)
+            .await?;
         Ok(rows.into_iter().map(|(id,)| id).collect())
     }
 
@@ -412,7 +551,9 @@ mod tests {
     use crate::types::*;
 
     async fn test_cache() -> Cache {
-        Cache::new("sqlite::memory:").await.expect("in-memory cache")
+        Cache::new("sqlite::memory:")
+            .await
+            .expect("in-memory cache")
     }
 
     fn test_metadata() -> EventMetadata {
@@ -423,6 +564,8 @@ mod tests {
             location: Some("NYC".to_string()),
             start_time: None,
             end_time: None,
+            scope_kind: None,
+            participation_mode: None,
         }
     }
 
@@ -664,7 +807,10 @@ mod tests {
         cache.record_qr_usage("evt1", 1000).await.unwrap();
         cache.record_qr_usage("evt1", 2000).await.unwrap();
 
-        let deleted = cache.cleanup_expired_replay_log(Utc::now() + chrono::Duration::hours(1)).await.unwrap();
+        let deleted = cache
+            .cleanup_expired_replay_log(Utc::now() + chrono::Duration::hours(1))
+            .await
+            .unwrap();
         assert_eq!(deleted, 2);
 
         assert!(!cache.check_qr_replay("evt1", 1000).await.unwrap());

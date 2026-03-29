@@ -10,17 +10,19 @@ use serde::{Deserialize, Serialize};
 use sha2::Digest;
 
 use crate::crypto::{qr, signatures};
+use crate::module;
 use crate::observe::{self, ObserveError, PaymentObserveError};
 use crate::relay::{self, RelayError};
 use crate::state::AppState;
 use crate::types::{
     ActiveEvent, BadgeObservation, EventIdPreimage, EventMetadata, HealthResponse, PaymentIntent,
-    QrPayload, QrResponse, WindowProof,
+    QrPayload, QrResponse, SignedClaimProof, WindowProof,
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/health", get(health))
+        .route("/module/manifest", get(module_manifest))
         .route("/events/intent", post(submit_intent))
         .route("/events/create", post(create_event))
         .route("/events", get(list_events))
@@ -29,6 +31,8 @@ pub fn router() -> Router<AppState> {
         .route("/events/:id/qr", get(get_qr))
         .route("/events/:id/activate", post(activate_event))
         .route("/events/:id/badge-holders", get(get_badge_holders))
+        .route("/claims/issue", post(issue_claim))
+        .route("/claims/verify", post(verify_claim))
         .route("/badges/observe", get(observe_badges))
         .route("/badges/build", post(build_badge))
         .route("/badges/broadcast", post(broadcast_badge))
@@ -52,7 +56,10 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     };
 
     // Opportunistically clean up expired replay log entries.
-    let _ = state.cache.cleanup_expired_replay_log(Utc::now() - Duration::hours(24)).await;
+    let _ = state
+        .cache
+        .cleanup_expired_replay_log(Utc::now() - Duration::hours(24))
+        .await;
 
     Json(HealthResponse {
         status: "operational".to_string(),
@@ -61,6 +68,10 @@ async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
         last_block_observed: state.rpc.last_observed_block().await,
         note: "This backend is non-authoritative. Protocol functions without it.".to_string(),
     })
+}
+
+async fn module_manifest(State(state): State<AppState>) -> Json<module::ModuleManifest> {
+    Json(module::manifest(&state))
 }
 
 #[derive(Deserialize)]
@@ -182,10 +193,15 @@ async fn submit_window(
         .ok_or(AppError::Observe(ObserveError::NotFound))?;
 
     let message = WindowProof::message_to_sign(&event_id, req.window_start, req.window_end);
-    signatures::verify_ckb_address_signature(&message, &req.creator_signature, &event.creator_address)
-        .map_err(|_| AppError::InvalidSignature)?;
+    signatures::verify_ckb_address_signature(
+        &message,
+        &req.creator_signature,
+        &event.creator_address,
+    )
+    .map_err(|_| AppError::InvalidSignature)?;
 
-    let window_secret = qr::derive_window_secret(&event_id, req.window_start, &req.creator_signature);
+    let window_secret =
+        qr::derive_window_secret(&event_id, req.window_start, &req.creator_signature);
     let commitment = hex::encode(sha2::Sha256::digest(window_secret));
 
     let window = WindowProof {
@@ -220,11 +236,8 @@ async fn get_qr(
         return Err(AppError::WindowClosed);
     }
 
-    let window_secret = qr::derive_window_secret(
-        &event_id,
-        window.window_start,
-        &window.creator_signature,
-    );
+    let window_secret =
+        qr::derive_window_secret(&event_id, window.window_start, &window.creator_signature);
 
     let payload = qr::generate_qr_payload(&event_id, &window_secret);
     let ttl = qr::qr_ttl_seconds();
@@ -248,19 +261,25 @@ async fn activate_event(
     Json(req): Json<ActivateRequest>,
 ) -> Result<Json<ActiveEvent>, AppError> {
     // Check if already activated via a prior payment observation.
-    if let Some(_existing) = state.cache.get_payment_observation(&event_id)
+    if let Some(_existing) = state
+        .cache
+        .get_payment_observation(&event_id)
         .await
-        .map_err(|e| AppError::Observe(ObserveError::Cache(e)))? {
-        let event = state.cache.get_active_event(&event_id)
+        .map_err(|e| AppError::Observe(ObserveError::Cache(e)))?
+    {
+        let event = state
+            .cache
+            .get_active_event(&event_id)
             .await
             .map_err(|e| AppError::Observe(ObserveError::Cache(e)))?
             .ok_or(AppError::Observe(ObserveError::NotFound))?;
         return Ok(Json(event));
     }
 
-    let event = observe::activate_event_from_payment(&state.cache, &state.rpc, &event_id, &req.tx_hash)
-        .await
-        .map_err(AppError::Observe)?;
+    let event =
+        observe::activate_event_from_payment(&state.cache, &state.rpc, &event_id, &req.tx_hash)
+            .await
+            .map_err(AppError::Observe)?;
     Ok(Json(event))
 }
 
@@ -269,10 +288,19 @@ async fn get_badge_holders(
     Path(event_id): Path<String>,
     Query(query): Query<VerifyQuery>,
 ) -> Result<Json<observe::BadgeListResponse>, AppError> {
-    let chain_config = state.dob_code_hash.as_deref().map(|ch| (ch, state.address_hrp.as_str()));
-    let response = observe::observe_badges_by_event(&state.cache, &state.rpc, &event_id, query.verify, chain_config)
-        .await
-        .map_err(AppError::BadgeObserve)?;
+    let chain_config = state
+        .dob_code_hash
+        .as_deref()
+        .map(|ch| (ch, state.address_hrp.as_str()));
+    let response = observe::observe_badges_by_event(
+        &state.cache,
+        &state.rpc,
+        &event_id,
+        query.verify,
+        chain_config,
+    )
+    .await
+    .map_err(AppError::BadgeObserve)?;
     Ok(Json(response))
 }
 
@@ -287,11 +315,140 @@ async fn observe_badges(
     State(state): State<AppState>,
     Query(query): Query<BadgeQuery>,
 ) -> Result<Json<observe::BadgeListResponse>, AppError> {
-    let chain_config = state.dob_code_hash.as_deref().map(|ch| (ch, state.address_hrp.as_str()));
-    let response = observe::observe_badges_by_address(&state.cache, &state.rpc, &query.address, query.verify, chain_config)
-        .await
-        .map_err(AppError::BadgeObserve)?;
+    let chain_config = state
+        .dob_code_hash
+        .as_deref()
+        .map(|ch| (ch, state.address_hrp.as_str()));
+    let response = observe::observe_badges_by_address(
+        &state.cache,
+        &state.rpc,
+        &query.address,
+        query.verify,
+        chain_config,
+    )
+    .await
+    .map_err(AppError::BadgeObserve)?;
     Ok(Json(response))
+}
+
+#[derive(Deserialize)]
+pub struct IssueClaimRequest {
+    pub event_id: String,
+    pub recipient_address: String,
+    pub claim_id: Option<String>,
+    pub proof_driver: String,
+    pub proof_ref: String,
+    pub issuer_address: String,
+    pub issuer_signature: String,
+    pub issued_at: Option<i64>,
+    pub expires_at: Option<i64>,
+}
+
+#[derive(Serialize)]
+pub struct IssueClaimResponse {
+    pub claim: SignedClaimProof,
+    pub claim_token: String,
+    pub event: ActiveEvent,
+}
+
+async fn issue_claim(
+    State(state): State<AppState>,
+    Json(req): Json<IssueClaimRequest>,
+) -> Result<Json<IssueClaimResponse>, AppError> {
+    let event = state
+        .cache
+        .get_active_event(&req.event_id)
+        .await
+        .map_err(|e| AppError::Observe(ObserveError::Cache(e)))?
+        .ok_or(AppError::Observe(ObserveError::NotFound))?;
+
+    if req.issuer_address != event.creator_address {
+        return Err(AppError::Relay(RelayError::UnauthorizedIssuer));
+    }
+
+    let issued_at = req.issued_at.unwrap_or_else(|| Utc::now().timestamp());
+    let claim_id = req.claim_id.unwrap_or_else(|| {
+        hex::encode(sha2::Sha256::digest(
+            format!(
+                "{}:{}:{}:{}:{}",
+                req.event_id, req.recipient_address, req.proof_driver, req.proof_ref, issued_at
+            )
+            .as_bytes(),
+        ))
+    });
+
+    let claim = SignedClaimProof {
+        event_id: req.event_id,
+        recipient_address: req.recipient_address,
+        claim_id,
+        proof_driver: req.proof_driver,
+        proof_ref: req.proof_ref,
+        issuer_address: req.issuer_address,
+        issued_at,
+        expires_at: req.expires_at,
+        issuer_signature: req.issuer_signature,
+    };
+
+    signatures::verify_ckb_address_signature(
+        &claim.signed_message(),
+        &claim.issuer_signature,
+        &claim.issuer_address,
+    )
+    .map_err(|_| AppError::InvalidSignature)?;
+
+    Ok(Json(IssueClaimResponse {
+        claim: claim.clone(),
+        claim_token: claim.encode_token(),
+        event,
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct VerifyClaimRequest {
+    pub claim_token: String,
+    pub address: Option<String>,
+}
+
+#[derive(Serialize)]
+pub struct VerifyClaimResponse {
+    pub valid: bool,
+    pub claim: SignedClaimProof,
+    pub event: ActiveEvent,
+    pub proof_hash: String,
+}
+
+async fn verify_claim(
+    State(state): State<AppState>,
+    Json(req): Json<VerifyClaimRequest>,
+) -> Result<Json<VerifyClaimResponse>, AppError> {
+    let claim = SignedClaimProof::parse_token(&req.claim_token).ok_or(AppError::InvalidClaimToken)?;
+    let claimer_address = req
+        .address
+        .clone()
+        .unwrap_or_else(|| claim.recipient_address.clone());
+
+    relay::verify_signed_claim_proof(&state.cache, &claim, &claimer_address)
+        .await
+        .map_err(AppError::Relay)?;
+
+    let event = state
+        .cache
+        .get_active_event(&claim.event_id)
+        .await
+        .map_err(|e| AppError::Observe(ObserveError::Cache(e)))?
+        .ok_or(AppError::Observe(ObserveError::NotFound))?;
+
+    let proof_hash = format!(
+        "0x{}",
+        hex::encode(sha2::Sha256::digest(serde_json::to_vec(&claim).unwrap()))
+    );
+
+    Ok(Json(VerifyClaimResponse {
+        valid: true,
+        claim,
+        event,
+        proof_hash,
+    }))
 }
 
 async fn build_badge(
@@ -430,13 +587,15 @@ async fn parse_qr(
     State(state): State<AppState>,
     Query(query): Query<QrParseQuery>,
 ) -> Result<Json<QrParseResponse>, AppError> {
-    let payload = QrPayload::parse(&query.data)
-        .ok_or(AppError::InvalidQrData)?;
+    let payload = QrPayload::parse(&query.data).ok_or(AppError::InvalidQrData)?;
 
     // Validate HMAC if the event exists and has an open window.
-    let valid = if let Some(event) = state.cache.get_active_event(&payload.event_id)
+    let valid = if let Some(event) = state
+        .cache
+        .get_active_event(&payload.event_id)
         .await
-        .map_err(|e| AppError::Observe(ObserveError::Cache(e)))? {
+        .map_err(|e| AppError::Observe(ObserveError::Cache(e)))?
+    {
         if let Some(window) = event.window.as_ref() {
             let window_secret = qr::derive_window_secret(
                 &payload.event_id,
@@ -468,32 +627,56 @@ pub enum AppError {
     WindowClosed,
     InvalidSignature,
     InvalidQrData,
+    InvalidClaimToken,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, message) = match &self {
             AppError::Observe(ObserveError::NotFound) => (StatusCode::NOT_FOUND, "event not found"),
-            AppError::Observe(ObserveError::PaymentNotFound) => (StatusCode::NOT_FOUND, "payment not found"),
-            AppError::Observe(ObserveError::PaymentNotConfirmed) => (StatusCode::BAD_REQUEST, "payment not confirmed"),
+            AppError::Observe(ObserveError::PaymentNotFound) => {
+                (StatusCode::NOT_FOUND, "payment not found")
+            }
+            AppError::Observe(ObserveError::PaymentNotConfirmed) => {
+                (StatusCode::BAD_REQUEST, "payment not confirmed")
+            }
             AppError::Observe(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
             AppError::BadgeObserve(e) => {
                 tracing::error!("Badge observe error: {e}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal error")
             }
-            AppError::PaymentObserve(PaymentObserveError::NotFound) => (StatusCode::NOT_FOUND, "payment not found"),
+            AppError::PaymentObserve(PaymentObserveError::NotFound) => {
+                (StatusCode::NOT_FOUND, "payment not found")
+            }
             AppError::PaymentObserve(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
-            AppError::Relay(RelayError::EventNotFound) => (StatusCode::NOT_FOUND, "event not found"),
-            AppError::Relay(RelayError::WindowNotOpen) => (StatusCode::FORBIDDEN, "window not open"),
+            AppError::Relay(RelayError::EventNotFound) => {
+                (StatusCode::NOT_FOUND, "event not found")
+            }
+            AppError::Relay(RelayError::WindowNotOpen) => {
+                (StatusCode::FORBIDDEN, "window not open")
+            }
             AppError::Relay(RelayError::WindowClosed) => (StatusCode::FORBIDDEN, "window closed"),
-            AppError::Relay(RelayError::ReplayDetected) => (StatusCode::CONFLICT, "replay detected"),
+            AppError::Relay(RelayError::ReplayDetected) => {
+                (StatusCode::CONFLICT, "replay detected")
+            }
             AppError::Relay(RelayError::InvalidQrHmac) => (StatusCode::UNAUTHORIZED, "invalid qr"),
             AppError::Relay(RelayError::QrExpired) => (StatusCode::GONE, "qr expired"),
+            AppError::Relay(RelayError::ClaimExpired) => (StatusCode::GONE, "claim expired"),
+            AppError::Relay(RelayError::RecipientMismatch) => {
+                (StatusCode::FORBIDDEN, "claim recipient mismatch")
+            }
+            AppError::Relay(RelayError::UnauthorizedIssuer) => {
+                (StatusCode::FORBIDDEN, "unauthorized issuer")
+            }
+            AppError::Relay(RelayError::MissingProof) => {
+                (StatusCode::BAD_REQUEST, "exactly one proof must be supplied")
+            }
             AppError::Relay(_) => (StatusCode::INTERNAL_SERVER_ERROR, "internal error"),
             AppError::WindowNotOpen => (StatusCode::FORBIDDEN, "window not open"),
             AppError::WindowClosed => (StatusCode::FORBIDDEN, "window closed"),
             AppError::InvalidSignature => (StatusCode::UNAUTHORIZED, "invalid creator signature"),
             AppError::InvalidQrData => (StatusCode::BAD_REQUEST, "invalid QR data format"),
+            AppError::InvalidClaimToken => (StatusCode::BAD_REQUEST, "invalid claim token"),
         };
 
         let body = serde_json::json!({ "error": message });

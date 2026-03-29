@@ -38,7 +38,11 @@ pub fn generate_qr_payload(event_id: &str, window_secret: &[u8; 32]) -> QrPayloa
     }
 }
 
-pub fn validate_qr_freshness(qr_timestamp: i64, window_start: i64, window_end: Option<i64>) -> bool {
+pub fn validate_qr_freshness(
+    qr_timestamp: i64,
+    window_start: i64,
+    window_end: Option<i64>,
+) -> bool {
     let now = Utc::now().timestamp();
 
     if qr_timestamp < window_start {

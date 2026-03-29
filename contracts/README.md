@@ -2,7 +2,7 @@
 
 **Contracts define verifiable facts. Scripts do observation and convenience only.**
 
-The contracts in this directory define the minimal on-chain guarantees for CKB-PoP. They do not implement attendance logic, event management, or verification flows. Their sole responsibility is to enforce **ownership**, **uniqueness**, and **immutability** of proof-of-presence badges. All verification logic is intentionally off-chain and cryptographically reproducible to preserve decentralization and backend replaceability.
+The contracts in this directory define the minimal on-chain guarantees for CKB-PoP. They do not implement attendance logic, event management, or verification flows. Their sole responsibility is to enforce **ownership**, **uniqueness**, and **immutability** of participation badges and scope anchors. All verification logic is intentionally off-chain and cryptographically reproducible to preserve decentralization and backend replaceability.
 
 ---
 
@@ -13,10 +13,10 @@ These are non-negotiable for everything in `/contracts`:
 | Constraint | Rationale |
 |------------|-----------|
 | Contracts never reference servers | Chain must not depend on any backend |
-| Contracts never encode attendance logic | Presence is proven off-chain |
+| Contracts never encode participation logic | Participation is proven off-chain |
 | Contracts only validate structure and ownership | Minimal on-chain footprint |
-| Contracts do not know what "events" are | Events are an off-chain concept |
-| Contracts do not know what "presence" is | Presence is cryptographic, not on-chain |
+| Contracts do not know what "events" are | Issuance scopes are an off-chain concept |
+| Contracts do not know what "presence" is | Participation is cryptographic, not on-chain |
 | Contracts only enforce who owns what and why it's unique | Core value prop |
 
 **Presence is proven off-chain, anchored on-chain.**
@@ -46,15 +46,15 @@ These are non-negotiable for everything in `/contracts`:
 
 ### DOB Badge (Required)
 
-The only mandatory contract. Represents a cryptographically unique proof-of-presence badge owned by a CKB address.
+The only mandatory contract. Represents a cryptographically unique participation badge owned by a CKB address.
 
 **The chain knows:** "This badge exists, it's unique, and this address owns it."
 
-**The chain does NOT know:** How attendance was verified, what QR was shown, what backend was used.
+**The chain does NOT know:** How participation was verified, what QR or submission was used, what backend was used.
 
 ### Event Anchor (Optional)
 
-Anchors an event's existence on-chain, immutably. Strengthens decentralization by removing backend as the first place an event appears.
+Anchors an issuance scope's existence on-chain, immutably. Strengthens decentralization by removing backend as the first place a scope appears.
 
 ---
 
@@ -64,10 +64,10 @@ Anchors an event's existence on-chain, immutably. Strengthens decentralization b
 |---------------------|-----|
 | Enforce attendance windows | Off-chain logic |
 | Enforce QR freshness | Off-chain logic |
-| Enforce "one check-in per person" | Off-chain logic |
-| Verify signatures for presence | Off-chain logic |
-| Store attendee lists | Off-chain data |
-| Store event state machines | Off-chain state |
+| Enforce "one completion per person" | Off-chain logic |
+| Verify signatures for participation | Off-chain logic |
+| Store participant lists | Off-chain data |
+| Store scope state machines | Off-chain state |
 | Call any oracle or backend | Decentralization |
 
 ---
@@ -76,7 +76,7 @@ Anchors an event's existence on-chain, immutably. Strengthens decentralization b
 
 | Concern | Where it lives |
 |---------|----------------|
-| Presence logic | Off-chain (scripts + signatures) |
+| Participation logic | Off-chain (scripts + signatures) |
 | Freshness | Off-chain (QR + HMAC) |
 | Verification | Off-chain (reproducible) |
 | Ownership | **On-chain** |

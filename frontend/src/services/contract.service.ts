@@ -1,5 +1,10 @@
 import { Injectable, inject } from '@angular/core';
 import { ccc } from '@ckb-ccc/ccc';
+import {
+  buildHashedCellData,
+  buildIssuerAnchorArgs,
+  buildUniqueArtifactArgs,
+} from '../lib/ckb-presence';
 import { WalletService } from './wallet.service';
 
 /**
@@ -7,8 +12,8 @@ import { WalletService } from './wallet.service';
  * These MUST match the deployed contracts exactly.
  *
  * Args schema (defined by contracts, mirrored here):
- *   - DOB Badge:    SHA256(event_id) || SHA256(recipient_address) = 64 bytes
- *   - Event Anchor: SHA256(event_id) || SHA256(creator_address)   = 64 bytes
+ *   - DOB Badge:    type_id (20) || SHA256(scope_id)[..20] (20) || SHA256(recipient_address)[..20] (20) = 60 bytes
+ *   - Event Anchor: SHA256(scope_id)[..20] (20) || SHA256(creator_address)[..20] (20) = 40 bytes
  */
 export interface ContractConfig {
   codeHash: string;
@@ -56,16 +61,6 @@ const EVENT_ANCHOR_CONFIG: ContractConfig = {
 const CONTRACTS_DEPLOYED = !DOB_BADGE_CONFIG.codeHash.endsWith('0001');
 
 /**
- * Cell data format (binary, versioned):
- * [ version: u8 | flags: u8 | content_hash: 32 bytes ]
- *
- * Version 1 flags:
- *   0x01 = has off-chain metadata
- */
-const DATA_VERSION = 1;
-const FLAG_HAS_METADATA = 0x01;
-
-/**
  * Transaction rejection error with chain details
  */
 export class ChainRejectionError extends Error {
@@ -105,48 +100,6 @@ export class ChainRejectionError extends Error {
 export class ContractService {
   private walletService = inject(WalletService);
 
-  /**
-   * SHA256 hash helper using Web Crypto API.
-   * Mirrors the hashing used in contracts.
-   */
-  private async sha256(data: string): Promise<Uint8Array> {
-    const encoder = new TextEncoder();
-    const dataBuffer = encoder.encode(data);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-    return new Uint8Array(hashBuffer);
-  }
-
-  /**
-   * Build type script args per contract spec:
-   * SHA256(eventId) || SHA256(address) = 64 bytes
-   */
-  private async buildArgs(eventId: string, address: string): Promise<string> {
-    const eventIdHash = await this.sha256(eventId);
-    const addressHash = await this.sha256(address);
-
-    const args = new Uint8Array(64);
-    args.set(eventIdHash, 0);
-    args.set(addressHash, 32);
-
-    return '0x' + Array.from(args).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
-  /**
-   * Build versioned binary cell data.
-   * Format: [ version | flags | content_hash ]
-   */
-  private async buildCellData(contentJson: object): Promise<string> {
-    const contentStr = JSON.stringify(contentJson);
-    const contentHash = await this.sha256(contentStr);
-
-    const data = new Uint8Array(34); // 1 + 1 + 32
-    data[0] = DATA_VERSION;
-    data[1] = FLAG_HAS_METADATA;
-    data.set(contentHash, 2);
-
-    return '0x' + Array.from(data).map(b => b.toString(16).padStart(2, '0')).join('');
-  }
-
   private configToScript(config: ContractConfig, args: string): ccc.Script {
     return ccc.Script.from({
       codeHash: config.codeHash,
@@ -166,28 +119,41 @@ export class ContractService {
   }
 
   /**
-   * Build a DOB Badge minting transaction.
-   * Uniqueness is enforced by the TYPE SCRIPT, not this code.
+   * Build a DOB Badge minting transaction skeleton.
+   *
+   * The type_id field in args (bytes 0-31) is set to zeros as a placeholder.
+   * The caller MUST inject the real type_id after selecting inputs, because
+   * the type_id is derived from the first input's outpoint — which is only
+   * known after completeInputsByCapacity runs.
+   *
+   * The output is sized for 60-byte args so capacity calculation is correct.
    */
   async buildBadgeMintTx(
     eventId: string,
     eventIssuer: string,
     recipientAddress: string,
-    proofHash?: string
+    proofHash?: string,
+    scopeKind = 'event',
+    participationMode = 'in-person'
   ): Promise<ccc.Transaction> {
     const signer = this.walletService.signer;
     if (!signer) {
       throw new Error('Wallet not connected');
     }
 
-    const args = await this.buildArgs(eventId, recipientAddress);
-    const typeScript = this.configToScript(DOB_BADGE_CONFIG, args);
+    const typeScript = this.configToScript(
+      DOB_BADGE_CONFIG,
+      await buildUniqueArtifactArgs(eventId, recipientAddress)
+    );
     const recipientLock = (await ccc.Address.fromString(recipientAddress, this.walletService.ckbClient)).script;
 
     // Build cell data (hash-only, full metadata stored off-chain)
-    const cellData = await this.buildCellData({
+    const cellData = await buildHashedCellData({
       protocol: 'ckb-pop',
       version: 1,
+      scope_id: eventId,
+      scope_kind: scopeKind,
+      participation_mode: participationMode,
       event_id: eventId,
       issuer: eventIssuer,
       proof_hash: proofHash,
@@ -209,20 +175,24 @@ export class ContractService {
   async buildEventAnchorTx(
     eventId: string,
     creatorAddress: string,
-    metadataHash?: string
+    metadataHash?: string,
+    scopeKind = 'event'
   ): Promise<ccc.Transaction> {
     const signer = this.walletService.signer;
     if (!signer) {
       throw new Error('Wallet not connected');
     }
 
-    const args = await this.buildArgs(eventId, creatorAddress);
+    const args = await buildIssuerAnchorArgs(eventId, creatorAddress);
     const typeScript = this.configToScript(EVENT_ANCHOR_CONFIG, args);
     const creatorLock = (await ccc.Address.fromString(creatorAddress, this.walletService.ckbClient)).script;
 
-    const cellData = await this.buildCellData({
+    const cellData = await buildHashedCellData({
+      scope_id: eventId,
+      scope_kind: scopeKind,
       event_id: eventId,
       creator: creatorAddress,
+      creator_address: creatorAddress,
       metadata_hash: metadataHash,
     });
 
@@ -237,13 +207,17 @@ export class ContractService {
 
   /**
    * Mint a DOB badge on-chain.
-   * Chain will reject if badge already exists (error code 3).
+   *
+   * The type_id is computed after inputs are selected and injected into
+   * the badge output's type script args before the transaction is signed.
    */
   async mintBadge(
     eventId: string,
     eventIssuer: string,
     recipientAddress: string,
-    proofHash?: string
+    proofHash?: string,
+    scopeKind = 'event',
+    participationMode = 'in-person'
   ): Promise<string> {
     if (!CONTRACTS_DEPLOYED) {
       // Simulation mode - contracts not yet deployed
@@ -253,9 +227,34 @@ export class ContractService {
       ).join('');
     }
 
+    const signer = this.walletService.signer;
+    if (!signer) {
+      throw new Error('Wallet not connected');
+    }
+
     try {
-      const tx = await this.buildBadgeMintTx(eventId, eventIssuer, recipientAddress, proofHash);
-      return await this.walletService.sendTransaction(tx);
+      // 1. Build the transaction skeleton with a zero type_id placeholder.
+      const tx = await this.buildBadgeMintTx(
+        eventId,
+        eventIssuer,
+        recipientAddress,
+        proofHash,
+        scopeKind,
+        participationMode
+      );
+
+      // 2. Select capacity inputs. The first input's outpoint determines the type_id.
+      await tx.completeInputsByCapacity(signer);
+
+      // 3. Compute the type_id: blake2b(first_input_packed || output_index_u64_le), truncated to 20 bytes.
+      const typeIdHex = ccc.hashTypeId(tx.inputs[0], 0).slice(2, 42); // first 40 hex chars = 20 bytes
+
+      // 4. Replace the placeholder in args with the real type_id.
+      tx.outputs[0].type!.args = await buildUniqueArtifactArgs(eventId, recipientAddress, typeIdHex);
+
+      // 5. Complete fee and send.
+      await tx.completeFeeBy(signer);
+      return signer.sendTransaction(tx);
     } catch (err) {
       throw ChainRejectionError.fromCkbError(err);
     }
@@ -268,7 +267,8 @@ export class ContractService {
   async createEventAnchor(
     eventId: string,
     creatorAddress: string,
-    metadataHash?: string
+    metadataHash?: string,
+    scopeKind = 'event'
   ): Promise<string> {
     if (!CONTRACTS_DEPLOYED) {
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -278,7 +278,7 @@ export class ContractService {
     }
 
     try {
-      const tx = await this.buildEventAnchorTx(eventId, creatorAddress, metadataHash);
+      const tx = await this.buildEventAnchorTx(eventId, creatorAddress, metadataHash, scopeKind);
       return await this.walletService.sendTransaction(tx);
     } catch (err) {
       throw ChainRejectionError.fromCkbError(err);
@@ -292,29 +292,13 @@ export class ContractService {
    * - Indexers lag behind chain tip
    * - Race conditions are possible
    * - The TYPE SCRIPT is the source of truth
+   *
+   * NOTE: With the Type ID args layout, the type_id occupies bytes 0-31 and
+   * is unique per badge instance. A prefix search by (event_id, recipient)
+   * is no longer possible via the indexer alone. This hint always returns
+   * false until an alternative lookup (e.g. backend query) is implemented.
    */
-  async badgeExistsHint(eventId: string, recipientAddress: string): Promise<boolean> {
-    if (!CONTRACTS_DEPLOYED) {
-      return false;
-    }
-
-    try {
-      const args = await this.buildArgs(eventId, recipientAddress);
-      const typeScript = this.configToScript(DOB_BADGE_CONFIG, args);
-
-      const client = this.walletService.ckbClient;
-      const cells = client.findCells({
-        script: typeScript,
-        scriptType: 'type',
-        scriptSearchMode: 'exact',
-      });
-
-      for await (const _ of cells) {
-        return true;
-      }
-    } catch {
-      // Indexer errors shouldn't block UX
-    }
+  async badgeExistsHint(_eventId: string, _recipientAddress: string): Promise<boolean> {
     return false;
   }
 
@@ -327,7 +311,7 @@ export class ContractService {
     }
 
     try {
-      const args = await this.buildArgs(eventId, creatorAddress);
+      const args = await buildIssuerAnchorArgs(eventId, creatorAddress);
       const typeScript = this.configToScript(EVENT_ANCHOR_CONFIG, args);
 
       const client = this.walletService.ckbClient;
