@@ -1,5 +1,5 @@
-import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Component } from '@angular/core';
 import { RouterLink, RouterLinkActive } from '@angular/router';
 
 @Component({
@@ -7,36 +7,65 @@ import { RouterLink, RouterLinkActive } from '@angular/router';
   standalone: true,
   imports: [CommonModule, RouterLink, RouterLinkActive],
   template: `
-    <nav class="fixed bottom-0 left-0 right-0 z-40 md:hidden safe-area-bottom" aria-label="Main">
-      <div class="absolute inset-0 bg-black/95 border-t border-white/[0.04]"></div>
-
-      <div class="relative flex items-center justify-around py-1 px-2">
+    <nav class="bottom-shell md:hidden" aria-label="Main">
+      <div class="bottom-nav">
         @for (item of navItems; track item.path) {
           <a
             [routerLink]="item.path"
-            routerLinkActive="active"
+            routerLinkActive="bottom-active"
             [routerLinkActiveOptions]="{exact: item.exact}"
-            class="nav-item flex flex-col items-center justify-center gap-0.5 py-1.5 px-3"
+            class="bottom-link"
           >
             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" [attr.d]="item.icon"/>
             </svg>
-            <span class="text-[8px] font-mono uppercase tracking-wider">{{ item.label }}</span>
+            <span>{{ item.label }}</span>
           </a>
         }
       </div>
     </nav>
   `,
   styles: [`
-    .safe-area-bottom {
-      padding-bottom: env(safe-area-inset-bottom, 0);
+    .bottom-shell {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 60;
+      padding: 0 14px calc(env(safe-area-inset-bottom, 0px) + 12px);
+      pointer-events: none;
     }
-    .nav-item {
-      color: #52525b;
-      min-width: 48px;
+    .bottom-nav {
+      pointer-events: auto;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 6px;
+      padding: 8px;
+      border-radius: 24px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(5, 5, 5, 0.82);
+      backdrop-filter: blur(24px);
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
     }
-    .nav-item.active {
-      color: #a3e635;
+    .bottom-link {
+      min-height: 52px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      border-radius: 18px;
+      color: rgba(255,255,255,0.45);
+      font-family: var(--font-mono);
+      font-size: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      transition: color 0.2s ease, background 0.2s ease, transform 0.2s ease;
+    }
+    .bottom-link.bottom-active {
+      color: black;
+      background: linear-gradient(135deg, rgba(163,230,53,0.95), rgba(132,204,22,0.95));
+      transform: translateY(-1px);
     }
   `]
 })
@@ -68,7 +97,7 @@ export class BottomNavComponent {
     },
     {
       path: '/gallery',
-      label: 'Badges',
+      label: 'Vault',
       exact: false,
       icon: 'M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z'
     }

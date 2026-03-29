@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CKB PoP Docs</title>
+  <link rel="icon" type="image/png" href="./assets/ckb-pop.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="noise"></div>
+
+  <header class="docs-nav">
+    <div class="docs-nav-inner">
+      <a href="#top" class="brand">
+        <span class="brand-mark">
+          <img src="./assets/ckb-pop.png" alt="" class="brand-mark-image">
+        </span>
+        <span class="brand-copy">
+          <strong>CKB PoP Docs</strong>
+          <small>Scope-based participation</small>
+        </span>
+      </a>
+      <nav>
+        <a href="#install">Install</a>
+        <a href="#flows">Flows</a>
+        <a href="#integrations">Integrations</a>
+        <a href="#backend">Backend</a>
+        <a href="#contracts">Contracts</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-grid-lines" aria-hidden="true">
+        <span class="grid-line horizontal" style="top: 16%"></span>
+        <span class="grid-line horizontal" style="top: 33%"></span>
+        <span class="grid-line horizontal" style="top: 50%"></span>
+        <span class="grid-line horizontal" style="top: 67%"></span>
+        <span class="grid-line horizontal" style="top: 84%"></span>
+        <span class="grid-line vertical" style="left: 12%"></span>
+        <span class="grid-line vertical" style="left: 24%"></span>
+        <span class="grid-line vertical" style="left: 36%"></span>
+        <span class="grid-line vertical" style="left: 48%"></span>
+        <span class="grid-line vertical" style="left: 60%"></span>
+        <span class="grid-line vertical" style="left: 72%"></span>
+        <span class="grid-line vertical" style="left: 84%"></span>
+      </div>
+      <div class="hero-orb" aria-hidden="true"></div>
+
+      <div class="hero-copy">
+        <div class="eyebrow"><span></span>Documentation</div>
+        <h1>
+          Issue and claim participation badges on CKB.
+          <span class="hero-accent">Built for <span id="hero-word">events</span>.</span>
+        </h1>
+        <p>
+          Use <code>ckb-pop-kit</code> to model participation scopes, issue signed claims, verify
+          eligibility, and mint non-transferable badges on Nervos CKB. Physical events are one flow.
+          Online hackathons, async programs, and community campaigns are all first-class issuance flows.
+        </p>
+        <div class="hero-actions">
+          <a href="#install" class="btn-primary">Get started</a>
+          <a href="#integrations" class="btn-secondary">Integration guide</a>
+          <a href="https://www.npmjs.com/package/ckb-pop-kit" class="btn-secondary" target="_blank" rel="noreferrer">npm package</a>
+        </div>
+      </div>
+
+      <div class="hero-card">
+        <div class="metric">
+          <span>Package</span>
+          <strong>ckb-pop-kit</strong>
+        </div>
+        <div class="metric">
+          <span>Latest published</span>
+          <strong>0.2.0</strong>
+        </div>
+        <div class="metric">
+          <span>Reference flows</span>
+          <strong>QR + claim</strong>
+        </div>
+        <div class="metric">
+          <span>Contracts</span>
+          <strong>2</strong>
+        </div>
+      </div>
+    </section>
+
+    <section id="install" class="section">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span>Install</div>
+        <h2>Start with the kit, then decide how much of CKB PoP you want to run.</h2>
+        <p>
+          Install the kit when you want the protocol primitives inside your own product. Run the backend when you
+          want the full CKB PoP server-side surface for claims, QR verification, badge observation, and manifest discovery.
+        </p>
+      </div>
+
+      <div class="two-col">
+        <article class="panel">
+          <div class="panel-header">
+            <h3>Package install</h3>
+            <button class="copy-btn" data-copy-target="install-command" aria-label="Copy package install command" title="Copy package install command"><span class="sr-only">Copy package install command</span></button>
+          </div>
+          <pre id="install-command"><code>npm install ckb-pop-kit</code></pre>
+
+          <div class="panel-header inline-header">
+            <h3>Import the kit</h3>
+            <button class="copy-btn" data-copy-target="install-import" aria-label="Copy package import example" title="Copy package import example"><span class="sr-only">Copy package import example</span></button>
+          </div>
+          <pre id="install-import"><code>import {
+  createReferenceCkbPresenceModule,
+  buildSignedClaimMessage,
+  encodeSignedClaimToken,
+  parseSignedClaimToken,
+} from 'ckb-pop-kit'
+
+const pop = createReferenceCkbPresenceModule()</code></pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h3>Backend setup</h3>
+            <button class="copy-btn" data-copy-target="backend-command" aria-label="Copy backend command" title="Copy backend command"><span class="sr-only">Copy backend command</span></button>
+          </div>
+          <pre id="backend-command"><code>cd scripts
+cargo run
+
+CKB_NETWORK=testnet
+CKB_RPC_URL=https://testnet.ckb.dev/rpc
+DATABASE_URL=sqlite:./ckb_pop.db?mode=rwc
+ALLOWED_ORIGINS=https://your-app.example</code></pre>
+
+          <div class="callout">
+            Use the backend when you want the complete CKB PoP server-side flow. If you already run your own backend,
+            wire the kit into that stack and keep the same proof, claim, and badge model.
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="flows" class="section dark-band">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span>Flows</div>
+        <h2>Different proof rituals, one badge model.</h2>
+        <p>
+          The contracts still enforce one badge per <code>(scope_id, address)</code>. What changes is how a user proves
+          they earned it.
+        </p>
+      </div>
+
+      <div class="workflow-grid">
+        <div class="workflow-steps" id="workflow-steps">
+          <button class="workflow-step active" data-flow="qr">
+            <span class="workflow-index">I</span>
+            <span class="workflow-copy">
+              <strong>Physical verification</strong>
+              <small>Organizer opens a live QR window, participant scans, backend checks freshness, participant signs mint.</small>
+            </span>
+          </button>
+          <button class="workflow-step" data-flow="claim">
+            <span class="workflow-index">II</span>
+            <span class="workflow-copy">
+              <strong>Online claim</strong>
+              <small>Platform decides eligibility, issues a signed claim token, participant verifies token, then signs mint.</small>
+            </span>
+          </button>
+          <button class="workflow-step" data-flow="submission">
+            <span class="workflow-index">III</span>
+            <span class="workflow-copy">
+              <strong>Async submission</strong>
+              <small>Submission or deliverable is reviewed, a proof reference is attached, then the user claims the resulting SBT.</small>
+            </span>
+          </button>
+        </div>
+
+        <div class="code-panel">
+          <div class="code-panel-header">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-filename" id="flow-filename">verify-qr.ts</span>
+          </div>
+          <div class="code-panel-body">
+            <div class="code-toolbar">
+              <span id="flow-label">Dynamic QR proof</span>
+              <button class="copy-btn" data-copy-target="flow-code" aria-label="Copy flow code" title="Copy flow code"><span class="sr-only">Copy flow code</span></button>
+            </div>
+            <pre id="flow-code"><code></code></pre>
+          </div>
+          <div class="code-panel-footer">
+            <span class="code-ping"></span>
+            <span id="flow-footer">ready</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="integrations" class="section">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span>Integrations</div>
+        <h2>Wire this into your app without giving up self-custody.</h2>
+        <p>
+          The intended integration model is: your app decides eligibility, your backend signs the claim,
+          participant still signs the actual mint. Below are the practical patterns you need.
+        </p>
+      </div>
+
+      <div class="integration-tabs" id="integration-tabs">
+        <button class="integration-tab active" data-integration="hackathon">Hackathons</button>
+        <button class="integration-tab" data-integration="program">Programs</button>
+        <button class="integration-tab" data-integration="community">Communities</button>
+      </div>
+
+      <div class="two-col">
+        <article class="panel">
+          <div class="panel-header">
+            <h3 id="integration-title">Hackathon completion flow</h3>
+            <button class="copy-btn" data-copy-target="integration-code" aria-label="Copy integration code" title="Copy integration code"><span class="sr-only">Copy integration code</span></button>
+          </div>
+          <pre id="integration-code"><code></code></pre>
+        </article>
+
+        <article class="panel">
+          <h3>What the integration must do</h3>
+          <ul class="check-list" id="integration-points"></ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="backend" class="section">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span>Backend API</div>
+        <h2>Backend routes your app can call</h2>
+      </div>
+
+      <div class="api-accordion">
+        <details open>
+          <summary><span>GET</span><code>/api/module/manifest</code></summary>
+          <p>Discover proof drivers, artifact drivers, policy extensions, runtime HRP, and reference routes.</p>
+        </details>
+        <details>
+          <summary><span>POST</span><code>/api/events/create</code></summary>
+          <p>Create a participation scope in the backend.</p>
+        </details>
+        <details>
+          <summary><span>POST</span><code>/api/claims/issue</code></summary>
+          <p>Issue a signed claim token for an eligible participant. This is useful when completion is decided by your backend before the participant signs the mint.</p>
+          <div class="panel-header inline-header">
+            <h3>Issue request</h3>
+            <button class="copy-btn" data-copy-target="issue-request" aria-label="Copy issue request example" title="Copy issue request example"><span class="sr-only">Copy issue request example</span></button>
+          </div>
+          <pre id="issue-request"><code>{
+  "event_id": "hack-2026",
+  "recipient_address": "ckt1winner...",
+  "proof_driver": "signed-claim",
+  "proof_ref": "submission-42",
+  "issuer_address": "ckt1organizer...",
+  "issuer_signature": "0x..."
+}</code></pre>
+        </details>
+        <details>
+          <summary><span>POST</span><code>/api/claims/verify</code></summary>
+          <p>Verify a signed claim token before the participant mints the badge.</p>
+          <div class="panel-header inline-header">
+            <h3>Verify request</h3>
+            <button class="copy-btn" data-copy-target="verify-request" aria-label="Copy verify request example" title="Copy verify request example"><span class="sr-only">Copy verify request example</span></button>
+          </div>
+          <pre id="verify-request"><code>{
+  "claim_token": "...",
+  "address": "ckt1winner..."
+}</code></pre>
+        </details>
+        <details>
+          <summary><span>GET</span><code>/api/badges/observe</code></summary>
+          <p>Observe minted badges by address using the backend cache and chain sync logic.</p>
+        </details>
+      </div>
+    </section>
+
+    <section id="contracts" class="section">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span>Contracts</div>
+        <h2>Minimal on-chain facts. Generic off-chain semantics.</h2>
+        <p>
+          The contracts do not interpret “attendance,” “hackathon,” or “course completion.” They only enforce
+          ownership, uniqueness, and immutability around a scope id and a recipient.
+        </p>
+      </div>
+
+      <div class="two-col">
+        <article class="panel">
+          <div class="panel-header">
+            <h3>DOB Badge metadata</h3>
+            <button class="copy-btn" data-copy-target="badge-schema" aria-label="Copy badge schema example" title="Copy badge schema example"><span class="sr-only">Copy badge schema example</span></button>
+          </div>
+          <pre id="badge-schema"><code>{
+  "protocol": "ckb-pop",
+  "version": "1",
+  "scope_id": "hack-2026",
+  "scope_kind": "hackathon",
+  "participation_mode": "online",
+  "issuer": "ckt1...",
+  "proof_hash": "0x..."
+}</code></pre>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h3>Scope Anchor metadata</h3>
+            <button class="copy-btn" data-copy-target="anchor-schema" aria-label="Copy anchor schema example" title="Copy anchor schema example"><span class="sr-only">Copy anchor schema example</span></button>
+          </div>
+          <pre id="anchor-schema"><code>{
+  "scope_id": "hack-2026",
+  "scope_kind": "hackathon",
+  "creator": "ckt1...",
+  "metadata_hash": "0x..."
+}</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="section dark-band">
+      <div class="section-heading">
+        <div class="eyebrow"><span></span>Reference surfaces</div>
+        <h2>The app frontend demonstrates the same system.</h2>
+      </div>
+
+      <div class="grid-cards">
+        <article class="card">
+          <h3>Verify</h3>
+          <p>Physical QR-based proof flow for in-person participation.</p>
+        </article>
+        <article class="card">
+          <h3>Claim</h3>
+          <p>Online claim-token flow for hackathons, programs, and async completions.</p>
+        </article>
+        <article class="card">
+          <h3>Create</h3>
+          <p>Reference organizer UI for creating scopes and anchors.</p>
+        </article>
+        <article class="card">
+          <h3>Integrate</h3>
+          <p>Manifest-backed capability discovery for external builders.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <script src="./script.js"></script>
+</body>
+</html>

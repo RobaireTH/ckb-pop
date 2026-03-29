@@ -13,11 +13,10 @@ import { ModuleService } from '../../services/module.service';
       <section class="hero">
         <div class="hero-copy">
           <div class="eyebrow">Integrator Surface</div>
-          <h1>Build on the CKB presence module without reverse-engineering the app.</h1>
+          <h1>Build with CKB PoP without reverse-engineering the product surface.</h1>
           <p>
-            This surface exposes the module manifest, runtime support, extension points, and
-            reference API routes so another team can wire their own organizer console, wallet flow,
-            or chain adapter.
+            This surface exposes the module manifest, runtime support, extension points, and backend routes
+            so your team can wire issuance, claims, and badge flows into your own product.
           </p>
           <div class="hero-cta">
             <a routerLink="/create" class="btn-primary">Use Reference Flow</a>
@@ -107,7 +106,7 @@ import { ModuleService } from '../../services/module.service';
         <div class="section-header">
           <div>
             <div class="eyebrow">Reference API</div>
-            <h2>Routes another product can consume</h2>
+            <h2>Routes your product can call</h2>
           </div>
         </div>
 
@@ -130,7 +129,7 @@ import { ModuleService } from '../../services/module.service';
         <div class="section-header">
           <div>
             <div class="eyebrow">Integration Notes</div>
-            <h2>What to wire next</h2>
+            <h2>Choose the integration shape that fits your product</h2>
           </div>
         </div>
 
