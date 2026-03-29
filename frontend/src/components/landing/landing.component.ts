@@ -58,6 +58,12 @@ import { WalletService } from '../../services/wallet.service';
                 </svg>
                 <span>Create Event</span>
               </a>
+              <a routerLink="/claim" class="cta-secondary">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m5-1a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <span>Claim Badge</span>
+              </a>
               <a routerLink="/integrate" class="cta-secondary">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9l4-4 4 4m0 6l-4 4-4-4"/>

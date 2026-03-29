@@ -6,6 +6,7 @@ import { PoapService, PoPEvent, Badge } from '../../services/poap.service';
 import { WalletModalComponent } from '../wallet-modal/wallet-modal.component';
 
 type Step = 'confirm' | 'signing' | 'minting' | 'success';
+type FlowKind = 'check-in' | 'claim';
 
 @Component({
   selector: 'app-minting',
@@ -54,7 +55,7 @@ type Step = 'confirm' | 'signing' | 'minting' | 'success';
           <div class="border border-white/[0.04] bg-black">
             <div class="p-4 border-b border-white/[0.04]">
               <div class="flex items-center justify-between">
-                <span class="font-mono text-[9px] text-lime-400 uppercase tracking-wider">Ready</span>
+                <span class="font-mono text-[9px] text-lime-400 uppercase tracking-wider">{{ readyLabel() }}</span>
                 <span class="font-mono text-[9px] text-zinc-600">{{ event()?.date }}</span>
               </div>
             </div>
@@ -74,7 +75,7 @@ type Step = 'confirm' | 'signing' | 'minting' | 'success';
                 </div>
                 <div class="flex justify-between text-[10px]">
                   <span class="font-mono text-zinc-600 uppercase tracking-wider">Type</span>
-                  <span class="font-mono text-lime-400">SBT</span>
+                  <span class="font-mono text-lime-400">{{ flowKind() === 'claim' ? 'Claimable SBT' : 'SBT' }}</span>
                 </div>
                 <div class="flex justify-between text-[10px]">
                   <span class="font-mono text-zinc-600 uppercase tracking-wider">Transfer</span>
@@ -91,7 +92,7 @@ type Step = 'confirm' | 'signing' | 'minting' | 'success';
                 </button>
               } @else {
                 <button (click)="showConfirmDialog.set(true)" class="btn-action w-full justify-center">
-                  <span>Sign Transaction</span>
+                  <span>{{ actionLabel() }}</span>
                   <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
                   </svg>
@@ -188,8 +189,10 @@ type Step = 'confirm' | 'signing' | 'minting' | 'success';
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
               </svg>
             </div>
-            <div class="font-display text-sm text-white mb-1">Confirm Transaction</div>
-            <div class="font-mono text-[9px] text-zinc-500 uppercase tracking-wider">Irreversible on-chain action</div>
+            <div class="font-display text-sm text-white mb-1">{{ flowKind() === 'claim' ? 'Confirm Claim' : 'Confirm Transaction' }}</div>
+            <div class="font-mono text-[9px] text-zinc-500 uppercase tracking-wider">
+              {{ flowKind() === 'claim' ? 'Eligibility verified, mint requires your signature' : 'Irreversible on-chain action' }}
+            </div>
           </div>
 
           <div class="bg-zinc-950 border border-white/[0.04] p-3 mb-4 space-y-1.5">
@@ -203,7 +206,7 @@ type Step = 'confirm' | 'signing' | 'minting' | 'success';
             </div>
             <div class="flex justify-between text-[10px]">
               <span class="font-mono text-zinc-600 uppercase">Type</span>
-              <span class="font-mono text-lime-400">SBT</span>
+              <span class="font-mono text-lime-400">{{ flowKind() === 'claim' ? 'Claimable SBT' : 'SBT' }}</span>
             </div>
           </div>
 
@@ -212,7 +215,7 @@ type Step = 'confirm' | 'signing' | 'minting' | 'success';
               Cancel
             </button>
             <button (click)="confirmAndMint()" class="btn-action flex-1 justify-center">
-              <span>Sign</span>
+              <span>{{ flowKind() === 'claim' ? 'Claim' : 'Sign' }}</span>
               <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
               </svg>
@@ -252,6 +255,8 @@ export class MintingComponent implements OnInit {
   earnedBadge = signal<Badge | null>(null);
   showWalletModal = signal(false);
   showConfirmDialog = signal(false);
+  flowKind = signal<FlowKind>('check-in');
+  proofHash = signal<string | undefined>(undefined);
 
   steps = [
     { id: 'confirm', label: 'Confirm', status: 'READY' },
@@ -263,9 +268,19 @@ export class MintingComponent implements OnInit {
     const state = history.state;
     if (state && state.event) {
       this.event.set(state.event);
+      this.flowKind.set(state.flowKind === 'claim' ? 'claim' : 'check-in');
+      this.proofHash.set(state.proofHash);
     } else {
       this.router.navigate(['/check-in']);
     }
+  }
+
+  actionLabel() {
+    return this.flowKind() === 'claim' ? 'Claim SBT' : 'Sign Transaction';
+  }
+
+  readyLabel() {
+    return this.flowKind() === 'claim' ? 'Claim Ready' : 'Ready';
   }
 
   getStepIndex() {
@@ -287,7 +302,7 @@ export class MintingComponent implements OnInit {
     this.currentStep.set('signing');
     setTimeout(() => {
       this.currentStep.set('minting');
-      this.poapService.mintBadge(this.event()!, this.walletService.address()!).then(badge => {
+      this.poapService.mintBadge(this.event()!, this.walletService.address()!, this.proofHash()).then(badge => {
         setTimeout(() => {
           this.earnedBadge.set(badge);
           this.currentStep.set('success');

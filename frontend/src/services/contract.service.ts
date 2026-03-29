@@ -12,8 +12,8 @@ import { WalletService } from './wallet.service';
  * These MUST match the deployed contracts exactly.
  *
  * Args schema (defined by contracts, mirrored here):
- *   - DOB Badge:    type_id (20) || SHA256(event_id)[..20] (20) || SHA256(recipient_address)[..20] (20) = 60 bytes
- *   - Event Anchor: SHA256(event_id)[..20] (20) || SHA256(creator_address)[..20] (20) = 40 bytes
+ *   - DOB Badge:    type_id (20) || SHA256(scope_id)[..20] (20) || SHA256(recipient_address)[..20] (20) = 60 bytes
+ *   - Event Anchor: SHA256(scope_id)[..20] (20) || SHA256(creator_address)[..20] (20) = 40 bytes
  */
 export interface ContractConfig {
   codeHash: string;
@@ -132,7 +132,9 @@ export class ContractService {
     eventId: string,
     eventIssuer: string,
     recipientAddress: string,
-    proofHash?: string
+    proofHash?: string,
+    scopeKind = 'event',
+    participationMode = 'in-person'
   ): Promise<ccc.Transaction> {
     const signer = this.walletService.signer;
     if (!signer) {
@@ -149,6 +151,9 @@ export class ContractService {
     const cellData = await buildHashedCellData({
       protocol: 'ckb-pop',
       version: 1,
+      scope_id: eventId,
+      scope_kind: scopeKind,
+      participation_mode: participationMode,
       event_id: eventId,
       issuer: eventIssuer,
       proof_hash: proofHash,
@@ -170,7 +175,8 @@ export class ContractService {
   async buildEventAnchorTx(
     eventId: string,
     creatorAddress: string,
-    metadataHash?: string
+    metadataHash?: string,
+    scopeKind = 'event'
   ): Promise<ccc.Transaction> {
     const signer = this.walletService.signer;
     if (!signer) {
@@ -182,8 +188,11 @@ export class ContractService {
     const creatorLock = (await ccc.Address.fromString(creatorAddress, this.walletService.ckbClient)).script;
 
     const cellData = await buildHashedCellData({
+      scope_id: eventId,
+      scope_kind: scopeKind,
       event_id: eventId,
       creator: creatorAddress,
+      creator_address: creatorAddress,
       metadata_hash: metadataHash,
     });
 
@@ -206,7 +215,9 @@ export class ContractService {
     eventId: string,
     eventIssuer: string,
     recipientAddress: string,
-    proofHash?: string
+    proofHash?: string,
+    scopeKind = 'event',
+    participationMode = 'in-person'
   ): Promise<string> {
     if (!CONTRACTS_DEPLOYED) {
       // Simulation mode - contracts not yet deployed
@@ -223,7 +234,14 @@ export class ContractService {
 
     try {
       // 1. Build the transaction skeleton with a zero type_id placeholder.
-      const tx = await this.buildBadgeMintTx(eventId, eventIssuer, recipientAddress, proofHash);
+      const tx = await this.buildBadgeMintTx(
+        eventId,
+        eventIssuer,
+        recipientAddress,
+        proofHash,
+        scopeKind,
+        participationMode
+      );
 
       // 2. Select capacity inputs. The first input's outpoint determines the type_id.
       await tx.completeInputsByCapacity(signer);
@@ -249,7 +267,8 @@ export class ContractService {
   async createEventAnchor(
     eventId: string,
     creatorAddress: string,
-    metadataHash?: string
+    metadataHash?: string,
+    scopeKind = 'event'
   ): Promise<string> {
     if (!CONTRACTS_DEPLOYED) {
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -259,7 +278,7 @@ export class ContractService {
     }
 
     try {
-      const tx = await this.buildEventAnchorTx(eventId, creatorAddress, metadataHash);
+      const tx = await this.buildEventAnchorTx(eventId, creatorAddress, metadataHash, scopeKind);
       return await this.walletService.sendTransaction(tx);
     } catch (err) {
       throw ChainRejectionError.fromCkbError(err);

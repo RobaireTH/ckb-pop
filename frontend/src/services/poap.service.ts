@@ -3,6 +3,8 @@ import {
   createReferenceCkbPresenceModule,
   sha256Hex,
   type PresenceEventRecord,
+  type PresenceScopeKind,
+  type ParticipationMode,
   type ReferenceActiveEvent,
   type ReferenceBadgeObservation,
 } from '../lib/ckb-presence';
@@ -18,6 +20,8 @@ export interface PoPEvent {
   date: string;
   issuer: string;
   location: string;
+  scopeKind?: PresenceScopeKind;
+  participationMode?: ParticipationMode;
   description?: string;
   imageUrl?: string;
   anchorTxHash?: string; // On-chain event anchor transaction
@@ -80,6 +84,8 @@ export class PoapService {
       date: event.metadata.startTime || event.activatedAt,
       issuer: event.creatorAddress,
       location: event.metadata.location || '',
+      scopeKind: typeof event.metadata.scopeKind === 'string' ? event.metadata.scopeKind : undefined,
+      participationMode: typeof event.metadata.participationMode === 'string' ? event.metadata.participationMode : undefined,
       description: event.metadata.description,
       imageUrl: event.metadata.imageUrl as string | undefined,
       anchorTxHash: event.anchorTxHash,
@@ -103,6 +109,8 @@ export class PoapService {
         imageUrl: event.imageUrl,
         location: event.location,
         startTime: event.date,
+        scopeKind: event.scopeKind,
+        participationMode: event.participationMode,
       },
     };
   }
@@ -141,7 +149,7 @@ export class PoapService {
     return undefined;
   }
 
-  async createEvent(eventData: Pick<PoPEvent, 'name' | 'date' | 'location' | 'description' | 'imageUrl'>, issuerAddress: string): Promise<PoPEvent> {
+  async createEvent(eventData: Pick<PoPEvent, 'name' | 'date' | 'location' | 'description' | 'imageUrl' | 'scopeKind' | 'participationMode'>, issuerAddress: string): Promise<PoPEvent> {
     const nonce = crypto.randomUUID();
 
     // Sign creation intent with wallet
@@ -175,12 +183,15 @@ export class PoapService {
         date: eventData.date,
         location: eventData.location,
         description: eventData.description,
+        scopeKind: eventData.scopeKind,
+        participationMode: eventData.participationMode,
       }))}`;
 
       anchorTxHash = await this.contractService.createEventAnchor(
         eventId,
         issuerAddress,
-        metadataHash
+        metadataHash,
+        eventData.scopeKind || 'event'
       );
     } catch (e) {
       console.warn("Event anchor creation failed (non-critical):", e);
@@ -216,7 +227,7 @@ export class PoapService {
     }
   }
 
-  async mintBadge(event: PoPEvent, address: string): Promise<Badge> {
+  async mintBadge(event: PoPEvent, address: string, proofHash?: string): Promise<Badge> {
     // Mint badge on-chain via ContractService
     // The TYPE SCRIPT enforces uniqueness - if badge exists, chain rejects
     let txHash: string;
@@ -224,7 +235,10 @@ export class PoapService {
       txHash = await this.contractService.mintBadge(
         event.id,
         event.issuer,
-        address
+        address,
+        proofHash,
+        event.scopeKind || 'event',
+        event.participationMode || 'in-person'
       );
     } catch (err) {
       // Surface chain rejection to user
