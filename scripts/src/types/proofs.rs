@@ -2,6 +2,28 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScopeKind {
+    Event,
+    Hackathon,
+    Program,
+    Course,
+    Campaign,
+    Bounty,
+    Membership,
+    Custom,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ParticipationMode {
+    InPerson,
+    Online,
+    Hybrid,
+    Async,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct QrPayload {
     pub event_id: String,
@@ -81,6 +103,8 @@ pub struct EventMetadata {
     pub location: Option<String>,
     pub start_time: Option<DateTime<Utc>>,
     pub end_time: Option<DateTime<Utc>>,
+    pub scope_kind: Option<ScopeKind>,
+    pub participation_mode: Option<ParticipationMode>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -137,6 +161,78 @@ pub struct BadgeObservation {
     pub mint_block_number: u64,
     pub verified_at_block: u64,
     pub observed_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct SignedClaimProof {
+    #[serde(alias = "scopeId", alias = "scope_id")]
+    pub event_id: String,
+    #[serde(alias = "recipientAddress")]
+    pub recipient_address: String,
+    #[serde(alias = "claimId")]
+    pub claim_id: String,
+    #[serde(alias = "proofDriver")]
+    pub proof_driver: String,
+    #[serde(alias = "proofRef")]
+    pub proof_ref: String,
+    #[serde(alias = "issuerAddress")]
+    pub issuer_address: String,
+    #[serde(alias = "issuedAt")]
+    pub issued_at: i64,
+    #[serde(alias = "expiresAt")]
+    pub expires_at: Option<i64>,
+    #[serde(alias = "issuerSignature")]
+    pub issuer_signature: String,
+}
+
+impl SignedClaimProof {
+    pub fn message_to_sign(
+        event_id: &str,
+        recipient_address: &str,
+        claim_id: &str,
+        proof_driver: &str,
+        proof_ref: &str,
+        issued_at: i64,
+        expires_at: Option<i64>,
+    ) -> String {
+        let expires = expires_at
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "open".to_string());
+        format!(
+            "CKB-PoP-Claim|{}|{}|{}|{}|{}|{}|{}",
+            event_id, recipient_address, claim_id, proof_driver, proof_ref, issued_at, expires
+        )
+    }
+
+    pub fn signed_message(&self) -> String {
+        Self::message_to_sign(
+            &self.event_id,
+            &self.recipient_address,
+            &self.claim_id,
+            &self.proof_driver,
+            &self.proof_ref,
+            self.issued_at,
+            self.expires_at,
+        )
+    }
+
+    pub fn encode_token(&self) -> String {
+        use base64::Engine;
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(self).expect("claim proof should serialize"))
+    }
+
+    pub fn parse_token(data: &str) -> Option<Self> {
+        use base64::Engine;
+        let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(data)
+            .ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    pub fn is_expired(&self, now: i64) -> bool {
+        self.expires_at.is_some_and(|expires| now > expires)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -361,12 +457,16 @@ mod tests {
             location: Some("NYC".to_string()),
             start_time: Some(Utc::now()),
             end_time: None,
+            scope_kind: Some(ScopeKind::Hackathon),
+            participation_mode: Some(ParticipationMode::Online),
         };
         let json = serde_json::to_string(&meta).unwrap();
         let parsed: EventMetadata = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed.name, "Test Event");
         assert_eq!(parsed.location, Some("NYC".to_string()));
         assert!(parsed.end_time.is_none());
+        assert_eq!(parsed.scope_kind, Some(ScopeKind::Hackathon));
+        assert_eq!(parsed.participation_mode, Some(ParticipationMode::Online));
     }
 
     #[test]
@@ -391,5 +491,43 @@ mod tests {
         assert_eq!(h.status, "operational");
         assert_eq!(h.ckb_rpc, "unknown");
         assert!(h.last_block_observed.is_none());
+    }
+
+    #[test]
+    fn test_signed_claim_proof_message_format() {
+        let msg = SignedClaimProof::message_to_sign(
+            "hack-1",
+            "ckt1qaddress",
+            "claim-1",
+            "signed-claim",
+            "submission-42",
+            1700000000,
+            Some(1700003600),
+        );
+        assert_eq!(
+            msg,
+            "CKB-PoP-Claim|hack-1|ckt1qaddress|claim-1|signed-claim|submission-42|1700000000|1700003600"
+        );
+    }
+
+    #[test]
+    fn test_signed_claim_proof_token_roundtrip() {
+        let proof = SignedClaimProof {
+            event_id: "hack-1".to_string(),
+            recipient_address: "ckt1qaddress".to_string(),
+            claim_id: "claim-1".to_string(),
+            proof_driver: "signed-claim".to_string(),
+            proof_ref: "submission-42".to_string(),
+            issuer_address: "ckt1issuer".to_string(),
+            issued_at: 1700000000,
+            expires_at: Some(1700003600),
+            issuer_signature: "0xsig".to_string(),
+        };
+
+        let token = proof.encode_token();
+        let parsed = SignedClaimProof::parse_token(&token).unwrap();
+        assert_eq!(parsed.claim_id, proof.claim_id);
+        assert_eq!(parsed.recipient_address, proof.recipient_address);
+        assert_eq!(parsed.proof_ref, proof.proof_ref);
     }
 }

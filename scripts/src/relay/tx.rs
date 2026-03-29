@@ -3,13 +3,14 @@ use serde::{Deserialize, Serialize};
 use crate::cache::Cache;
 use crate::crypto::{qr, signatures};
 use crate::rpc::CkbRpcClient;
-use crate::types::AttendanceProof;
+use crate::types::{AttendanceProof, SignedClaimProof};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BuildBadgeTxRequest {
     pub event_id: String,
     pub address: String,
-    pub attendance_proof: AttendanceProof,
+    pub attendance_proof: Option<AttendanceProof>,
+    pub claim_proof: Option<SignedClaimProof>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -87,20 +88,61 @@ pub async fn verify_attendance_proof(
     Ok(())
 }
 
+pub async fn verify_signed_claim_proof(
+    cache: &Cache,
+    proof: &SignedClaimProof,
+    claimer_address: &str,
+) -> Result<(), RelayError> {
+    let event = cache
+        .get_active_event(&proof.event_id)
+        .await
+        .map_err(RelayError::Cache)?
+        .ok_or(RelayError::EventNotFound)?;
+
+    if proof.issuer_address != event.creator_address {
+        return Err(RelayError::UnauthorizedIssuer);
+    }
+
+    if proof.recipient_address != claimer_address {
+        return Err(RelayError::RecipientMismatch);
+    }
+
+    if proof.is_expired(chrono::Utc::now().timestamp()) {
+        return Err(RelayError::ClaimExpired);
+    }
+
+    signatures::verify_ckb_address_signature(
+        &proof.signed_message(),
+        &proof.issuer_signature,
+        &proof.issuer_address,
+    )
+    .map_err(|_| RelayError::InvalidSignature)?;
+
+    Ok(())
+}
+
 pub async fn build_badge_tx(
     cache: &Cache,
     _rpc: &CkbRpcClient,
     request: BuildBadgeTxRequest,
 ) -> Result<BuildBadgeTxResponse, RelayError> {
-    verify_attendance_proof(cache, &request.attendance_proof).await?;
+    match (&request.attendance_proof, &request.claim_proof) {
+        (Some(attendance_proof), None) => {
+            verify_attendance_proof(cache, attendance_proof).await?;
 
-    cache
-        .record_qr_usage(
-            &request.attendance_proof.event_id,
-            request.attendance_proof.qr_payload.timestamp,
-        )
-        .await
-        .map_err(RelayError::Cache)?;
+            cache
+                .record_qr_usage(
+                    &attendance_proof.event_id,
+                    attendance_proof.qr_payload.timestamp,
+                )
+                .await
+                .map_err(RelayError::Cache)?;
+        }
+        (None, Some(claim_proof)) => {
+            verify_signed_claim_proof(cache, claim_proof, &request.address).await?;
+        }
+        _ => return Err(RelayError::MissingProof),
+    }
 
     let tx_hash = format!(
         "0x{}",
@@ -150,6 +192,14 @@ pub enum RelayError {
     ReplayDetected,
     #[error("invalid signature")]
     InvalidSignature,
+    #[error("claim has expired")]
+    ClaimExpired,
+    #[error("claim recipient does not match the mint address")]
+    RecipientMismatch,
+    #[error("claim issuer is not authorized for this scope")]
+    UnauthorizedIssuer,
+    #[error("exactly one proof must be supplied")]
+    MissingProof,
 }
 
 #[cfg(test)]
@@ -179,6 +229,8 @@ mod tests {
                 location: None,
                 start_time: None,
                 end_time: None,
+                scope_kind: None,
+                participation_mode: None,
             },
             creator_address: "ckt1q".to_string(),
             payment_tx_hash: "0xtx".to_string(),
@@ -227,6 +279,8 @@ mod tests {
                 location: None,
                 start_time: None,
                 end_time: None,
+                scope_kind: None,
+                participation_mode: None,
             },
             creator_address: "ckt1q".to_string(),
             payment_tx_hash: "0xtx".to_string(),
@@ -294,6 +348,45 @@ mod tests {
         };
         let result = verify_attendance_proof(&cache, &proof).await;
         assert!(matches!(result, Err(RelayError::QrExpired)));
+    }
+
+    #[tokio::test]
+    async fn test_verify_signed_claim_proof_recipient_mismatch() {
+        let cache = test_cache().await;
+        let event = ActiveEvent {
+            event_id: "hack-1".to_string(),
+            metadata: EventMetadata {
+                name: "Hackathon".to_string(),
+                description: "Desc".to_string(),
+                image_url: None,
+                location: None,
+                start_time: Some(Utc::now()),
+                end_time: None,
+                scope_kind: Some(ScopeKind::Hackathon),
+                participation_mode: Some(ParticipationMode::Online),
+            },
+            creator_address: "ckt1creator".to_string(),
+            payment_tx_hash: "0xtx".to_string(),
+            payment_block_number: 100,
+            activated_at: Utc::now(),
+            window: None,
+        };
+        cache.store_active_event(&event).await.unwrap();
+
+        let proof = SignedClaimProof {
+            event_id: "hack-1".to_string(),
+            recipient_address: "ckt1winner".to_string(),
+            claim_id: "claim-1".to_string(),
+            proof_driver: "signed-claim".to_string(),
+            proof_ref: "submission-42".to_string(),
+            issuer_address: "ckt1creator".to_string(),
+            issued_at: Utc::now().timestamp(),
+            expires_at: Some(Utc::now().timestamp() + 3600),
+            issuer_signature: "0xsig".to_string(),
+        };
+
+        let result = verify_signed_claim_proof(&cache, &proof, "ckt1other").await;
+        assert!(matches!(result, Err(RelayError::RecipientMismatch)));
     }
 
     #[tokio::test]

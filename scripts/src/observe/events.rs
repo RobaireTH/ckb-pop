@@ -207,6 +207,8 @@ mod tests {
             location: None,
             start_time: None,
             end_time: None,
+            scope_kind: None,
+            participation_mode: None,
         }
     }
 

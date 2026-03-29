@@ -564,6 +564,8 @@ mod tests {
             location: Some("NYC".to_string()),
             start_time: None,
             end_time: None,
+            scope_kind: None,
+            participation_mode: None,
         }
     }
 

@@ -70,6 +70,16 @@ pub fn manifest(state: &AppState) -> ModuleManifest {
                 "Plain Event ID",
                 "Manual lookup mode for apps that want copy-paste, deep-link, or fallback entry.",
             ),
+            extension(
+                "signed-claim",
+                "Signed Claim Proof",
+                "Organizer-issued claim tokens for online, hybrid, or asynchronous participation.",
+            ),
+            extension(
+                "submission-proof",
+                "Submission Proof",
+                "Submission or deliverable references for hackathons, programs, and bounty flows.",
+            ),
         ],
         artifact_drivers: vec![
             extension(
@@ -94,6 +104,16 @@ pub fn manifest(state: &AppState) -> ModuleManifest {
                 "Backend Observation Policy",
                 "Caches event state and observes confirmations without holding protocol authority.",
             ),
+            extension(
+                "organizer-attestation",
+                "Organizer Attestation Policy",
+                "Lets organizers attest that a participant completed an online or hybrid requirement.",
+            ),
+            extension(
+                "submission-review",
+                "Submission Review Policy",
+                "Supports issuing badges after a reviewed submission or deliverable is accepted.",
+            ),
         ],
         api: ModuleApiSurface {
             base_path: "/api".to_string(),
@@ -102,6 +122,19 @@ pub fn manifest(state: &AppState) -> ModuleManifest {
                     method: "GET".to_string(),
                     path: "/module/manifest".to_string(),
                     purpose: "Discover module capabilities, extension points, and runtime support.".to_string(),
+                },
+                ModuleRoute {
+                    method: "POST".to_string(),
+                    path: "/claims/issue".to_string(),
+                    purpose:
+                        "Issue a signed online claim token for an eligible participant.".to_string(),
+                },
+                ModuleRoute {
+                    method: "POST".to_string(),
+                    path: "/claims/verify".to_string(),
+                    purpose:
+                        "Verify a signed claim token before a participant mints their badge."
+                            .to_string(),
                 },
                 ModuleRoute {
                     method: "POST".to_string(),
