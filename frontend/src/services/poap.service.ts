@@ -2,6 +2,7 @@ import { Injectable, signal, inject, computed } from '@angular/core';
 import {
   createReferenceCkbPresenceModule,
   sha256Hex,
+  buildWindowMessage,
   type PresenceEventRecord,
   type PresenceScopeKind,
   type ParticipationMode,
@@ -225,6 +226,38 @@ export class PoapService {
     } catch {
       return [];
     }
+  }
+
+  /**
+   * Register a signed attendance window with the backend.
+   */
+  async registerWindow(eventId: string, windowStart: number, windowEnd: number | null, signature: string): Promise<void> {
+    const res = await fetch(`${this.backendUrl}/events/${eventId}/window`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        window_start: windowStart,
+        window_end: windowEnd,
+        creator_signature: signature,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to register window' }));
+      throw new Error(err.error || 'Failed to register window');
+    }
+  }
+
+  /**
+   * Fetch the current rotating QR data for an event.
+   */
+  async getQr(eventId: string): Promise<{ qr_data: string, expires_at: number }> {
+    const res = await fetch(`${this.backendUrl}/events/${eventId}/qr`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to fetch QR' }));
+      throw new Error(err.error || 'Failed to fetch QR');
+    }
+    return res.json();
   }
 
   async mintBadge(event: PoPEvent, address: string, proofHash?: string): Promise<Badge> {

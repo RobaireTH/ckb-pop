@@ -288,18 +288,21 @@ export class ContractService {
   /**
    * UX HINT ONLY: Check if a badge might already exist.
    *
-   * WARNING: This is for UI feedback only. Do NOT use for enforcement.
-   * - Indexers lag behind chain tip
-   * - Race conditions are possible
-   * - The TYPE SCRIPT is the source of truth
-   *
-   * NOTE: With the Type ID args layout, the type_id occupies bytes 0-31 and
-   * is unique per badge instance. A prefix search by (event_id, recipient)
-   * is no longer possible via the indexer alone. This hint always returns
-   * false until an alternative lookup (e.g. backend query) is implemented.
+   * Queries the backend for known badge holders for this event.
    */
-  async badgeExistsHint(_eventId: string, _recipientAddress: string): Promise<boolean> {
-    return false;
+  async badgeExistsHint(eventId: string, recipientAddress: string): Promise<boolean> {
+    try {
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001/api';
+      const res = await fetch(`${backendUrl}/events/${eventId}/badge-holders`);
+      if (!res.ok) return false;
+      const data = await res.json();
+      const badges = data.badges || [];
+      return badges.some((b: { holder_address: string }) => 
+        b.holder_address.toLowerCase() === recipientAddress.toLowerCase()
+      );
+    } catch {
+      return false;
+    }
   }
 
   /**
