@@ -4,6 +4,7 @@ import { ActivatedRoute, RouterLink, Router } from '@angular/router';
 import { PoapService, PoPEvent } from '../../services/poap.service';
 import { WalletService } from '../../services/wallet.service';
 import { WalletModalComponent } from '../wallet-modal/wallet-modal.component';
+import { buildWindowMessage } from '../../lib/ckb-presence';
 import QRCode from 'qrcode';
 
 @Component({
@@ -169,10 +170,14 @@ export class LiveQrComponent implements OnInit, OnDestroy {
 		if (!ev) return;
 
 		try {
-			// Sign once to prove creator identity for this kiosk session.
-			const sessionStart = Math.floor(Date.now() / 1000);
-			const message = `CKB-PoP-QR|${ev.id}|${sessionStart}`;
-			this.sessionSignature = await this.walletService.signMessage(message);
+			// Sign the standard attendance window message.
+			const windowStart = Math.floor(Date.now() / 1000);
+			const message = buildWindowMessage(ev.id, windowStart, null);
+			const signature = await this.walletService.signMessage(message);
+
+			// Register the window with the backend so HMACs can be verified.
+			await this.poapService.registerWindow(ev.id, windowStart, null, signature);
+
 			this.startRotation();
 		} catch (err) {
 			const message = err instanceof Error ? err.message : 'Failed to sign attendance session.';
@@ -185,7 +190,7 @@ export class LiveQrComponent implements OnInit, OnDestroy {
 		let tick = 0;
 		this.intervalId = setInterval(() => {
 			tick++;
-			const remaining = this.refreshRate - tick;
+			const remaining = Math.max(0, this.secondsLeft() - 1);
 			this.secondsLeft.set(remaining);
 			this.progress.set((remaining / this.refreshRate) * 100);
 
@@ -198,27 +203,29 @@ export class LiveQrComponent implements OnInit, OnDestroy {
 
 	private async generateQr() {
 		const ev = this.event();
-		if (!ev || !this.sessionSignature) return;
-
-		const timestamp = Math.floor(Date.now() / 1000);
-		const qrData = `${ev.id}|${timestamp}|${this.sessionSignature}`;
+		if (!ev) return;
 
 		try {
-			const dataUrl = await QRCode.toDataURL(qrData, {
+			const { qr_data, expires_at } = await this.poapService.getQr(ev.id);
+
+			const dataUrl = await QRCode.toDataURL(qr_data, {
 				width: 300,
 				margin: 1,
 				color: { dark: '#0f172a', light: '#ffffff' },
 				errorCorrectionLevel: 'L',
 			});
 			this.qrUrl.set(dataUrl);
-		} catch {
-			this.signingError.set('Failed to generate QR code.');
+
+			const now = Math.floor(Date.now() / 1000);
+			const remaining = Math.max(1, expires_at - now);
+			this.secondsLeft.set(remaining);
+			this.refreshRate = remaining; // Sync local refresh rate with backend TTL.
+			this.progress.set(100);
+		} catch (err) {
+			this.signingError.set('Failed to fetch rotating QR from backend.');
 			if (this.intervalId) clearInterval(this.intervalId);
 			this.intervalId = null;
 			return;
 		}
-
-		this.secondsLeft.set(this.refreshRate);
-		this.progress.set(100);
 	}
 }

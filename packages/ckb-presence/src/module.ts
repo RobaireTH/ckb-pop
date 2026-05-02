@@ -81,6 +81,11 @@ export function buildSignedClaimMessage(claim: Omit<PresenceSignedClaim, 'issuer
   return `CKB-PoP-Claim|${claim.scopeId}|${claim.recipientAddress}|${claim.claimId}|${claim.proofDriver}|${claim.proofRef}|${claim.issuedAt}|${expiresAt}`;
 }
 
+export function buildWindowMessage(eventId: string, windowStart: number, windowEnd?: number | null): string {
+  const endPart = windowEnd == null ? 'open' : windowEnd.toString();
+  return `CKB-PoP-Window|${eventId}|${windowStart}|${endPart}`;
+}
+
 export function encodeSignedClaimToken(claim: PresenceSignedClaim): string {
   return encodeBase64Url(JSON.stringify({
     event_id: claim.scopeId,
