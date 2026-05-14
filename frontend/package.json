@@ -20,7 +20,7 @@
     "@angular/core": "^21.1.3",
     "@angular/forms": "^21.1.3",
     "@angular/platform-browser": "^21.1.3",
-    "@angular/router": "^21.1.3",
+    "@angular/router": "^21.2.1",
     "@ckb-ccc/ccc": "^1.1.25",
     "@vercel/analytics": "^1.6.1",
     "@vercel/speed-insights": "^1.3.1",
