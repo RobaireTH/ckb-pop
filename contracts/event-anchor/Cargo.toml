@@ -6,7 +6,7 @@ license = "MIT"
 description = "Event Anchor type script for CKB-PoP protocol (optional)"
 
 [dependencies]
-ckb-std = "0.16"
+ckb-std = "1.1"
 
 [features]
 default = []
